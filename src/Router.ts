@@ -32,9 +32,6 @@ export function route<P extends string, L extends LoadPage<P>>(
   return { ...route, Page };
 }
 
-export let matches = Routing.matches;
-export let href = Routing.href;
-
 export type Router = {
   navigate: (path: string, config?: { replace?: boolean }) => void;
 };
