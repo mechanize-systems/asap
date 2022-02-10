@@ -57,11 +57,15 @@ export class Watch {
     await this._ready.promise;
     let sub = {
       expression: [
-        "anyof",
-        ["match", "*.js"],
-        ["match", "*.ts"],
-        ["match", "*.tsx"],
-        ["match", "*.css"],
+        "allof",
+        [
+          "anyof",
+          ["match", "*.js"],
+          ["match", "*.ts"],
+          ["match", "*.tsx"],
+          ["match", "*.css"],
+        ],
+        ["not", ["match", "node_modules/.cache/**", "wholename"]],
       ],
       fields: ["name", "size", "mtime_ms", "exists", "type"],
       since: spec.since,
@@ -78,6 +82,7 @@ export class Watch {
     this._client.on("subscription", (resp) => {
       log("changes detected");
       if (resp.subscription !== spec.path) return;
+      console.log(resp.files[0].name);
       onChange(resp);
     });
     return def.promise.then(() => () => {

@@ -11,6 +11,7 @@ import debug from "debug";
 
 export type BuildConfig = {
   buildId: string;
+  projectRoot: string;
   entryPoints: { [out: string]: string };
 };
 
@@ -33,7 +34,7 @@ export function build(config: BuildConfig): BuildService {
   let log = debug(`asap:Build:${config.buildId}`);
 
   let outputPath = path.join(
-    process.cwd(),
+    config.projectRoot,
     "node_modules",
     ".cache",
     "asap",
@@ -54,6 +55,7 @@ export function build(config: BuildConfig): BuildService {
   log(`starting initial build`);
   esbuild
     .build({
+      absWorkingDir: config.projectRoot,
       entryPoints: config.entryPoints,
       outdir: outputPath,
       bundle: true,

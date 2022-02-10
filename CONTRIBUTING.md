@@ -23,13 +23,19 @@ Define the following environment variables:
     export PROJECT__ROOT="$PWD"
     export PATH="$PROJECT__ROOT/.bin:$PATH"
 
-Now you have `asap` executable available:
+Now you have `asap` executable available which rebuilds the `bin/` source code
+on each invocation:
 
-    asap
+    asap --help
 
 To typecheck the project:
 
     make check
+
+We use [debug][] npm package for debig logs, enable it by setting `DEBUG`
+environment variable:
+
+    DEBUG='asap:*' asap
 
 ## Code Organization
 

@@ -1,2 +1,3 @@
 #!/bin/bash
+make -s -C "$PROJECT__ROOT" main.js
 exec node "$PROJECT__ROOT/main.js" "$@"
