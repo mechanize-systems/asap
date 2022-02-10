@@ -10,7 +10,9 @@ export default function HelloPage(props: HelloPageProps) {
   return (
     <div>
       <div>HELLO {props.name}</div>
-      <ASAP.Link href={ASAP.href(routes.index)}>Back to /</ASAP.Link>
+      <ASAP.Link route={routes.index} params={{}}>
+        Back to /
+      </ASAP.Link>
     </div>
   );
 }

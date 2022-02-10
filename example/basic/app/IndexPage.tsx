@@ -8,7 +8,7 @@ export default function IndexPage(_props: IndexPageProps) {
   return (
     <div>
       <div>Welcome!</div>
-      <ASAP.Link href={ASAP.href(routes.hello, { name: "World" })}>
+      <ASAP.Link route={routes.hello} params={{ name: "World" }}>
         Say hello!
       </ASAP.Link>
     </div>
