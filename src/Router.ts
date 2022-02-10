@@ -1,3 +1,4 @@
+/// <reference types="react/next" />
 /**
  * 2019 - 2022 Copyright Alexey Taktarov <molefrog@gmail.com>
  * 2022 - now Copyright Andrey Popp <me@andreypopp.com>
@@ -13,6 +14,8 @@ export type Routes = { [name: string]: Route<any> };
 export type Route<P extends string> = Routing.Route<P> & {
   Page: React.ComponentType<Routing.RouteParams<P>>;
 };
+
+export type RouteParams<P extends string> = Routing.RouteParams<P>;
 
 type Page<Props> = { default: (props: Props) => JSX.Element };
 
@@ -51,9 +54,10 @@ export function useRouter(): Router {
 const eventPopstate = "popstate";
 const eventPushState = "pushState";
 const eventReplaceState = "replaceState";
-export const events = [eventPopstate, eventPushState, eventReplaceState];
+const events = [eventPopstate, eventPushState, eventReplaceState];
 
 export function useLocation({ basePath = "" }: { basePath?: string } = {}) {
+  let [updatingPath, startTransition] = React.useTransition();
   const [{ path, search }, update] = React.useState(() => ({
     path: currentPathname(basePath),
     search: location.search,
@@ -72,7 +76,9 @@ export function useLocation({ basePath = "" }: { basePath?: string } = {}) {
 
       if (prevHash.current !== hash) {
         prevHash.current = hash;
-        update({ path: pathname, search });
+        startTransition(() => {
+          update({ path: pathname, search });
+        });
       }
     };
 
@@ -104,7 +110,7 @@ export function useLocation({ basePath = "" }: { basePath?: string } = {}) {
     [basePath]
   );
 
-  return [path, router] as const;
+  return [updatingPath, path, router] as const;
 }
 
 // While History API does have `popstate` event, the only

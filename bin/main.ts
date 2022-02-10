@@ -76,14 +76,14 @@ export async function main(config: types.AppConfig) {
   let app = Fastify.fastify();
 
   app.addHook("preHandler", async (req) => {
-    // For /_js/ let's wait till the current build is ready.
-    if (req.url.startsWith("/_js/")) {
+    // For /__static/ let's wait till the current build is ready.
+    if (req.url.startsWith("/__static/")) {
       await build.ready;
     }
   });
 
   app.register(FastifyStatic, {
-    prefix: "/_js",
+    prefix: "/__static",
     root: build.outputPath,
   });
 
@@ -95,7 +95,7 @@ export async function main(config: types.AppConfig) {
 <html>
   <body>
     <div id="asap"></div>
-    <script type="module" src="/_js/main.js"></script>
+    <script type="module" src="/__static/main.js"></script>
   </body>
 </html>
     `;
