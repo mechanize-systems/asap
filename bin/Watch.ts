@@ -10,6 +10,8 @@ import debug from "debug";
 
 let log = debug("asap:Watch");
 
+export type Clock = string & { readonly __tag: unique symbol };
+
 export class Watch {
   _ready: Deferred<any>;
   _client: Watchman.Client;
@@ -33,15 +35,15 @@ export class Watch {
   /**
    * Query for the current logical clock value.
    */
-  async clock(path: string): Promise<number> {
+  async clock(path: string): Promise<Clock> {
     log("clock");
     await this._ready.promise;
-    let def = deferred<number>();
+    let def = deferred<Clock>();
     this._client.command(["clock", path], (err, resp) => {
       if (err != null) def.reject(err);
       else {
         log("clock %s", resp.clock);
-        def.resolve(resp.clock as number);
+        def.resolve(resp.clock as Clock);
       }
     });
     return def.promise;
@@ -51,7 +53,7 @@ export class Watch {
    * Subscribe for changes at the `path` root.
    */
   async subscribe(
-    spec: { path: string; since?: number | null | undefined },
+    spec: { path: string; since?: Clock | null | undefined },
     onChange: (resp: any) => void
   ) {
     await this._ready.promise;

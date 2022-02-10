@@ -14,7 +14,7 @@ type Handler<Params> = (
   req: Request,
   res: Response,
   params: Params
-) => string | Promise<string>;
+) => unknown | Promise<unknown>;
 
 export function route<P extends string>(
   method: HTTPMethod,

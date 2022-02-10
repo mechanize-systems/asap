@@ -1,6 +1,10 @@
 import * as api from "@mechanize/asap/api";
 
 export let routes = [
-  api.route("GET", "/todo", () => "list todos!!"),
-  api.route("GET", "/todo/:item", (_req, _res, { item }) => `todo: ${item}`),
+  api.route("GET", "/todo", () => {
+    return [{ id: "1" }];
+  }),
+  api.route("GET", "/todo/:id", (_req, _res, { id }) => {
+    return { id };
+  }),
 ];

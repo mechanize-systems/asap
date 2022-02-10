@@ -15,6 +15,7 @@ export type BuildConfig = {
   entryPoints: { [out: string]: string };
   platform?: esbuild.Platform;
   external?: esbuild.BuildOptions["external"];
+  onBuild?: (b: esbuild.BuildIncremental) => void;
 };
 
 /**
@@ -52,6 +53,7 @@ export function build(config: BuildConfig): BuildService {
     let spent = performance.now() - currentBuildStart;
     log(`built in %sms`, spent.toFixed(0));
     currentBuild.resolve(b);
+    if (config.onBuild != null) config.onBuild(b);
   };
 
   log(`starting initial build`);
