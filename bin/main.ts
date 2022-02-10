@@ -6,6 +6,7 @@ import * as Fastify from "fastify";
 import FastifyStatic from "fastify-static";
 import debug from "debug";
 import * as Cmd from "cmd-ts";
+import * as CmdFs from "cmd-ts/batteries/fs";
 
 import * as Build from "./Build";
 import * as Watch from "./Watch";
@@ -211,7 +212,7 @@ debug.enable("asap:info");
 
 let appConfigArgs = {
   projectRoot: Cmd.positional({
-    type: Cmd.optional(Cmd.string),
+    type: Cmd.optional(CmdFs.Directory),
     displayName: "PROJECT_ROOT",
   }),
   env: Cmd.option({
@@ -244,10 +245,7 @@ let serveCmd = Cmd.command({
       type: Cmd.string,
     }),
   },
-  handler: ({ projectRoot, env, port, iface }) => {
-    let cwd = process.cwd();
-    if (projectRoot != null) projectRoot = path.resolve(cwd, projectRoot);
-    else projectRoot = cwd;
+  handler: ({ projectRoot = process.cwd(), env, port, iface }) => {
     serve({ projectRoot, env }, { port, iface });
   },
 });
@@ -258,17 +256,18 @@ let buildCmd = Cmd.command({
   args: {
     ...appConfigArgs,
   },
-  handler: ({ projectRoot, env }) => {
-    let cwd = process.cwd();
-    if (projectRoot != null) projectRoot = path.resolve(cwd, projectRoot);
-    else projectRoot = cwd;
+  handler: ({ projectRoot = process.cwd(), env }) => {
     build({ projectRoot, env });
   },
 });
 
 let asapCmd = Cmd.subcommands({
   name: "asap",
-  cmds: { serve: serveCmd, build: buildCmd },
+  version: require("../package.json").version,
+  cmds: {
+    serve: serveCmd,
+    build: buildCmd,
+  },
 });
 
 Cmd.run(asapCmd, process.argv.slice(2));
