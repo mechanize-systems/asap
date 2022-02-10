@@ -30,7 +30,7 @@ export type BuildService = {
   /** Start the initial build. */
   start: () => Promise<void>;
   /** Promise which resolves when the currently running build has completed. */
-  ready: () => Promise<void>;
+  ready: () => Promise<boolean>;
   /** Stop the build process. */
   stop: () => Promise<void>;
 };
@@ -38,6 +38,7 @@ export type BuildService = {
 /** Start the build service. */
 export function build(config: BuildConfig): BuildService {
   let log = debug(`asap:Build:${config.buildId}`);
+
   let platform = config.platform ?? "browser";
   let env = config.env ?? "production";
 
@@ -51,8 +52,15 @@ export function build(config: BuildConfig): BuildService {
     env
   );
 
-  let initialBuild = deferred<esbuild.BuildIncremental>();
-  let currentBuild = deferred<esbuild.BuildIncremental>();
+  let makeDeferredBuild = () => {
+    let b = deferred<esbuild.BuildIncremental>();
+    // Suppress 'unhandledRejection' event for build.
+    b.promise.catch(() => {});
+    return b;
+  };
+
+  let initialBuild = makeDeferredBuild();
+  let currentBuild = makeDeferredBuild();
   let currentBuildStart = performance.now();
 
   let onBuild = (b: esbuild.BuildIncremental) => {
@@ -62,57 +70,96 @@ export function build(config: BuildConfig): BuildService {
     if (config.onBuild != null) config.onBuild(b);
   };
 
-  log(`starting initial build`);
+  let start = async () => {
+    log(`starting initial build`);
+    let build: null | esbuild.BuildIncremental = null;
+    currentBuildStart = performance.now();
+    try {
+      build = await esbuild.build({
+        absWorkingDir: config.projectRoot,
+        entryPoints: config.entryPoints,
+        outdir: outputPath,
+        bundle: true,
+        loader: { ".js": "jsx" },
+        metafile: true,
+        splitting: platform === "browser",
+        treeShaking: env === "production",
+        incremental: true,
+        format: "esm",
+        platform,
+        external: config.external ?? [],
+        minify: env === "production",
+        define: {
+          NODE_NEV: env,
+        },
+      });
+    } catch (err: any) {
+      initialBuild.reject(err);
+      currentBuild.reject(err);
+      return;
+    }
+    if (build != null) {
+      initialBuild.resolve(build);
+      onBuild(build);
+    }
+  };
+
+  let stop = async () => {
+    try {
+      let b = await initialBuild.promise;
+      b.stop?.();
+      b.rebuild.dispose();
+    } catch (_err) {}
+    try {
+      let b = await initialBuild.promise;
+      b.stop?.();
+    } catch (_err) {}
+  };
+
+  let rebuild = async () => {
+    log(`rebuilding`);
+    try {
+      if (initialBuild.isResolved) {
+        let ib = initialBuild.value;
+        if (!currentBuild.isCompleted) {
+          await currentBuild.promise;
+        }
+        currentBuild.value.stop?.();
+        currentBuild = makeDeferredBuild();
+        currentBuildStart = performance.now();
+        let build: esbuild.BuildIncremental | null = null;
+        try {
+          build = await ib.rebuild();
+        } catch (err: any) {
+          currentBuild.reject(err);
+          return;
+        }
+        if (build != null) {
+          onBuild(build);
+        }
+      } else if (initialBuild.isRejected) {
+        initialBuild = makeDeferredBuild();
+        currentBuild = makeDeferredBuild();
+        start();
+      } else {
+        await initialBuild.promise;
+        await rebuild();
+      }
+    } catch (_err) {}
+  };
 
   return {
     outputPath,
-    start() {
-      esbuild
-        .build({
-          absWorkingDir: config.projectRoot,
-          entryPoints: config.entryPoints,
-          outdir: outputPath,
-          bundle: true,
-          loader: { ".js": "jsx" },
-          metafile: true,
-          splitting: platform === "browser",
-          treeShaking: env === "production",
-          incremental: true,
-          format: "esm",
-          platform,
-          external: config.external ?? [],
-          minify: env === "production",
-          define: {
-            NODE_NEV: env,
-          },
-        })
-        .then((build) => {
-          initialBuild.resolve(build);
-          onBuild(build);
-        });
-      return currentBuild.promise.then(() => {});
-    },
-    async stop() {
-      let [ib, cb] = await Promise.all([
-        initialBuild.promise,
-        currentBuild.promise,
-      ]);
-      ib.rebuild.dispose();
-      ib.stop?.();
-      cb.stop?.();
-    },
+    start,
+    stop,
+    rebuild,
     async ready() {
-      await currentBuild.promise;
-    },
-    async rebuild() {
-      log(`rebuilding`);
-      if (!currentBuild.isCompleted) {
+      try {
         await currentBuild.promise;
+        return true;
+      } catch (_err) {
+        return false;
       }
-      currentBuild.value.stop?.();
-      currentBuild = deferred();
-      currentBuildStart = performance.now();
-      onBuild(await (await initialBuild.promise).rebuild());
     },
   };
 }

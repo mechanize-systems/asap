@@ -113,8 +113,8 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
     let watch = new Watch.Watch();
     let clock = await watch.clock(projectRoot);
 
-    app.buildApp.start();
-    app.buildApi.start();
+    await app.buildApp.start();
+    await app.buildApi.start();
 
     await watch.subscribe({ path: projectRoot, since: clock }, () => {
       info("changes detected, rebuilding");
@@ -129,7 +129,7 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
   server.addHook("preHandler", async (req) => {
     // For /__static/ let's wait till the current build is ready.
     if (env === "development" && req.url.startsWith("/__static/")) {
-      await app.buildApp.ready;
+      await app.buildApp.ready();
     }
   });
 
@@ -170,7 +170,7 @@ let serveApi =
   async (req, res) => {
     if (app.config.env === "development") {
       // Wait till the current build is ready.
-      await app.buildApi.ready;
+      await app.buildApi.ready();
     }
 
     // TODO we should cache the eval'ed bundle if not in development
@@ -208,7 +208,9 @@ let serveApi =
  * Command Line Interface.
  */
 
-debug.enable("asap:info");
+if (!("DEBUG" in process.env)) {
+  debug.enable("asap:info");
+}
 
 let appConfigArgs = {
   projectRoot: Cmd.positional({
