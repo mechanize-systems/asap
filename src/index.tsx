@@ -24,27 +24,33 @@ export function boot(routes: Router.Routes) {
   });
 }
 
-export type LinkProps = React.HTMLProps<HTMLAnchorElement>;
+export type LinkProps<P extends string> = {
+  route: Router.Route<P>;
+  params: Router.RouteParams<P>;
+} & Omit<React.HTMLProps<HTMLAnchorElement>, "href">;
 
 /**
  * <Link /> component render an <a /> element which performs client side
  * naviation on press.
  */
-export function Link(props: LinkProps) {
-  let router = Router.useRouter();
-  let onClick: React.MouseEventHandler = (ev) => {
-    if (props.href == null) return;
-    if (
-      props.href.startsWith("http:") ||
-      props.href.startsWith("https:") ||
-      props.href.startsWith("mailto:")
-    )
-      return;
-    ev.preventDefault();
-    router.navigate(props.href);
-  };
-  return <a {...props} onClick={onClick} />;
-}
+export let Link = React.forwardRef(
+  <P extends string>(
+    { route, params, ...props }: LinkProps<P>,
+    ref: React.Ref<HTMLAnchorElement>
+  ) => {
+    let router = Router.useRouter();
+    let href = Routing.href(route, params);
+    let onClick: React.MouseEventHandler<HTMLAnchorElement> = React.useCallback(
+      (ev) => {
+        ev.preventDefault();
+        router.navigate(href);
+        props.onClick?.(ev);
+      },
+      [href]
+    );
+    return <a {...props} ref={ref} href={href} onClick={onClick} />;
+  }
+);
 
 type AppProps = {
   routes: Router.Routes;

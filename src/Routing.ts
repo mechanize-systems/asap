@@ -29,7 +29,7 @@ export type Route<Path extends string> = {
  */
 export function href<P extends string>(
   route: Route<P>,
-  params: RouteParams<P> = {}
+  params: RouteParams<P>
 ): string {
   return regexparam.inject(route.path, params as any);
 }
