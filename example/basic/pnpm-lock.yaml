@@ -1,0 +1,7 @@
+lockfileVersion: 5.3
+
+specifiers:
+  '@mechanize/asap': '*'
+
+dependencies:
+  '@mechanize/asap': link:../..

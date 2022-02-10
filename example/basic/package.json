@@ -1,0 +1,7 @@
+{
+  "name": "asap-example-basic",
+  "version": "1.0.0",
+  "dependencies": {
+    "@mechanize/asap": "*"
+  }
+}

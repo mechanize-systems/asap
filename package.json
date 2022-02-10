@@ -1,0 +1,35 @@
+{
+  "name": "@mechanize/asap",
+  "version": "1.0.0",
+  "description": "React web application framework",
+  "bin": {
+    "asap": "main.js"
+  },
+  "author": "Andrey Popp <me@andreypopp.com>",
+  "license": "MIT",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "devDependencies": {
+    "@types/debug": "^4.1.7",
+    "@types/fb-watchman": "^2.0.1",
+    "@types/node": "^17.0.16",
+    "@types/react": "^17.0.39",
+    "@types/react-dom": "^17.0.11",
+    "eslint": "^8.8.0",
+    "prettier": "^2.5.1",
+    "react": "rc",
+    "react-dom": "rc",
+    "ts-node": "^10.5.0",
+    "typescript": "^4.5.5",
+    "typescript-language-server": "^0.9.6"
+  },
+  "dependencies": {
+    "debug": "^4.3.3",
+    "esbuild": "^0.14.20",
+    "fastify": "^3.27.1",
+    "fastify-static": "^4.5.0",
+    "fb-watchman": "^2.0.1",
+    "regexparam": "^2.0.0",
+    "source-map-support": "^0.5.21"
+  }
+}

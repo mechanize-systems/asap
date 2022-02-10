@@ -1,0 +1,5 @@
+.envrc
+node_modules
+/main.js
+/lib
+/*.d.ts
