@@ -20,13 +20,17 @@ let devCmd = Cmd.command({
   description: "Start application in development mode",
   args: {
     projectRoot: Cmd.positional({
-      type: Cmd.string,
+      type: Cmd.optional(Cmd.string),
       displayName: "PROJECT",
     }),
   },
   handler: ({ projectRoot }) => {
     let cwd = process.cwd();
-    projectRoot = path.resolve(cwd, projectRoot);
+    if (projectRoot != null) {
+      projectRoot = path.resolve(cwd, projectRoot);
+    } else {
+      projectRoot = cwd;
+    }
     main({ projectRoot });
   },
 });

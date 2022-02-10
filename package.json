@@ -24,7 +24,7 @@
     "typescript-language-server": "^0.9.6"
   },
   "dependencies": {
-    "cmd-ts": "^0.9.0",
+    "cmd-ts": "^0.10.0",
     "debug": "^4.3.3",
     "esbuild": "^0.14.20",
     "fastify": "^3.27.1",
