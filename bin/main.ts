@@ -7,119 +7,118 @@ import FastifyStatic from "fastify-static";
 import debug from "debug";
 import * as Cmd from "cmd-ts";
 
-import type * as types from "./types";
 import * as Build from "./Build";
 import * as Watch from "./Watch";
 import * as Routing from "../src/Routing";
 import type * as API from "../src/api";
 
-let info = debug("asap:info");
+type AppConfig = {
+  /**
+   * Project root.
+   */
+  projectRoot: string;
 
-debug.enable("asap:info");
+  /**
+   * What env application is running in.
+   */
+  env: AppEnv;
 
-let serveCmd = Cmd.command({
-  name: "serve",
-  description: "Serve application",
-  args: {
-    projectRoot: Cmd.positional({
-      type: Cmd.optional(Cmd.string),
-      displayName: "PROJECT_ROOT",
-    }),
-    production: Cmd.flag({
-      long: "production",
-      description: "Serve application in production mode",
-    }),
-    port: Cmd.option({
-      long: "port",
-      description: "Port to listen on (default: 3001)",
-      defaultValue: () => 3001,
-      env: "ASAP__PORT",
-      type: Cmd.number,
-    }),
-    iface: Cmd.option({
-      long: "interface",
-      description: "Interface to listen on (default: 127.0.0.1)",
-      defaultValue: () => "127.0.0.1",
-      env: "ASAP__IFACE",
-      type: Cmd.string,
-    }),
-  },
-  handler: ({ projectRoot, production, port, iface }) => {
-    let cwd = process.cwd();
-    if (projectRoot != null) {
-      projectRoot = path.resolve(cwd, projectRoot);
-    } else {
-      projectRoot = cwd;
-    }
-    let mode: types.AppConfig["mode"] = production
-      ? "production"
-      : "development";
-    main({ projectRoot, mode, port, iface });
-  },
-});
+  /**
+   * Base path application is mounted to.
+   *
+   * Can be also specified through ASAP__BASEPATH environment variable.
+   * Can be also specified dynamically via Content-Base HTTP header.
+   */
+  basePath?: string;
 
-let buildCmd = Cmd.command({
-  name: "build",
-  description: "Build application",
-  args: {},
-  handler: () => {
-    throw new Error("TODO");
-  },
-});
+  /**
+   * Page routes.
+   *
+   * This is mounted directly under $basePath/.
+   */
+};
 
-let asapCmd = Cmd.subcommands({
-  name: "asap",
-  cmds: { serve: serveCmd, build: buildCmd },
-});
+type AppEnv = "development" | "production";
 
-Cmd.run(asapCmd, process.argv.slice(2));
+type ServeConfig = {
+  /**
+   * Interface to listen to.
+   *
+   * Can be also specified through ASAP__IFACE environment variable.
+   */
+  iface?: string | undefined;
+
+  /**
+   * Port to listen to.
+   *
+   * Can be also specified through ASAP__PORT environment variable.
+   */
+  port?: number | undefined;
+};
 
 type App = {
-  config: types.AppConfig;
+  config: AppConfig;
   buildApi: Build.BuildService;
   buildApp: Build.BuildService;
 };
 
-export async function main(config: types.AppConfig) {
-  let { projectRoot, mode = "development" } = config;
-  info("starting project");
-  info("projectRoot: $PWD/%s", path.relative(process.cwd(), projectRoot));
-  info("mode: %s", mode);
+let info = debug("asap:info");
 
-  let watch: Watch.Watch | null = null;
-  let clock: Watch.Clock | null = null;
-
-  if (mode === "development") {
-    watch = new Watch.Watch();
-    clock = await watch.clock(config.projectRoot);
-  }
-
+function createApp(config: AppConfig): App {
   let buildApp = Build.build({
     buildId: "app",
-    projectRoot: projectRoot,
+    projectRoot: config.projectRoot,
     entryPoints: {
-      main: path.join(projectRoot, "app"),
+      main: path.join(config.projectRoot, "app"),
     },
+    env: config.env,
     onBuild: () => info("app build ready"),
   });
 
   let buildApi = Build.build({
     buildId: "api",
-    projectRoot: projectRoot,
+    projectRoot: config.projectRoot,
     entryPoints: {
-      main: path.join(projectRoot, "api"),
+      main: path.join(config.projectRoot, "api"),
     },
     platform: "node",
+    env: config.env,
     onBuild: () => info(`api build ready`),
   });
+  return { buildApi, buildApp, config };
+}
 
-  let app: App = { buildApi, buildApp, config };
+async function build(config: AppConfig) {
+  let { projectRoot, env = "development" } = config;
+  info("building project");
+  info("projectRoot: $PWD/%s", path.relative(process.cwd(), projectRoot));
+  info("env: %s", env);
 
-  if (watch != null) {
+  let app = createApp(config);
+
+  await Promise.all([app.buildApp.start(), app.buildApi.start()]);
+  await Promise.all([app.buildApp.stop(), app.buildApi.stop()]);
+}
+
+async function serve(config: AppConfig, serveConfig: ServeConfig) {
+  let { projectRoot, env = "development" } = config;
+  info("serving project");
+  info("projectRoot: $PWD/%s", path.relative(process.cwd(), projectRoot));
+  info("env: %s", env);
+
+  let app = createApp(config);
+
+  if (env === "development") {
+    let watch = new Watch.Watch();
+    let clock = await watch.clock(projectRoot);
+
+    app.buildApp.start();
+    app.buildApi.start();
+
     await watch.subscribe({ path: projectRoot, since: clock }, () => {
       info("changes detected, rebuilding");
-      buildApp.rebuild();
-      buildApi.rebuild();
+      app.buildApp.rebuild();
+      app.buildApi.rebuild();
     });
     info("watching project for changes");
   }
@@ -128,20 +127,20 @@ export async function main(config: types.AppConfig) {
 
   server.addHook("preHandler", async (req) => {
     // For /__static/ let's wait till the current build is ready.
-    if (req.url.startsWith("/__static/")) {
-      await buildApp.ready;
+    if (env === "development" && req.url.startsWith("/__static/")) {
+      await app.buildApp.ready;
     }
   });
 
   server.register(FastifyStatic, {
     prefix: "/__static",
-    root: buildApp.outputPath,
+    root: app.buildApp.outputPath,
   });
 
   server.get("/_api*", serveApi(app));
   server.get("/*", serveApp(app));
 
-  let { iface = "10.0.88.2", port = 3001 } = config;
+  let { iface = "10.0.88.2", port = 3001 } = serveConfig;
   server.listen(port, iface, () => {
     info("listening on http://%s:%d", iface, port);
   });
@@ -168,11 +167,12 @@ let serveApp =
 let serveApi =
   (app: App): Fastify.RouteHandler =>
   async (req, res) => {
-    if (app.config.mode === "development") {
+    if (app.config.env === "development") {
       // Wait till the current build is ready.
       await app.buildApi.ready;
     }
 
+    // TODO we should cache the eval'ed bundle if not in development
     let bundlePath = path.join(app.buildApi.outputPath, "main.js");
     let bundle = await fs.promises.readFile(bundlePath, "utf8");
 
@@ -202,3 +202,73 @@ let serveApi =
     res.statusCode = 404;
     res.send("404 NOT FOUND");
   };
+
+/**
+ * Command Line Interface.
+ */
+
+debug.enable("asap:info");
+
+let appConfigArgs = {
+  projectRoot: Cmd.positional({
+    type: Cmd.optional(Cmd.string),
+    displayName: "PROJECT_ROOT",
+  }),
+  env: Cmd.option({
+    short: "E",
+    long: "env",
+    description: "either 'development' or 'production' (default: 'production')",
+    env: "NODE_ENV",
+    defaultValue: () => "development" as AppEnv,
+    type: Cmd.oneOf(["development", "production"]),
+  }),
+};
+
+let serveCmd = Cmd.command({
+  name: "serve",
+  description: "Serve application",
+  args: {
+    ...appConfigArgs,
+    port: Cmd.option({
+      long: "port",
+      description: "Port to listen on (default: 3001)",
+      defaultValue: () => 3001,
+      env: "ASAP__PORT",
+      type: Cmd.number,
+    }),
+    iface: Cmd.option({
+      long: "interface",
+      description: "Interface to listen on (default: 127.0.0.1)",
+      defaultValue: () => "127.0.0.1",
+      env: "ASAP__IFACE",
+      type: Cmd.string,
+    }),
+  },
+  handler: ({ projectRoot, env, port, iface }) => {
+    let cwd = process.cwd();
+    if (projectRoot != null) projectRoot = path.resolve(cwd, projectRoot);
+    else projectRoot = cwd;
+    serve({ projectRoot, env }, { port, iface });
+  },
+});
+
+let buildCmd = Cmd.command({
+  name: "build",
+  description: "Build application",
+  args: {
+    ...appConfigArgs,
+  },
+  handler: ({ projectRoot, env }) => {
+    let cwd = process.cwd();
+    if (projectRoot != null) projectRoot = path.resolve(cwd, projectRoot);
+    else projectRoot = cwd;
+    build({ projectRoot, env });
+  },
+});
+
+let asapCmd = Cmd.subcommands({
+  name: "asap",
+  cmds: { serve: serveCmd, build: buildCmd },
+});
+
+Cmd.run(asapCmd, process.argv.slice(2));

@@ -16,6 +16,7 @@ export type BuildConfig = {
   platform?: esbuild.Platform;
   external?: esbuild.BuildOptions["external"];
   onBuild?: (b: esbuild.BuildIncremental) => void;
+  env?: "development" | "production";
 };
 
 /**
@@ -26,6 +27,8 @@ export type BuildService = {
   outputPath: string;
   /** Schedule a rebuild. */
   rebuild: () => Promise<void>;
+  /** Start the initial build. */
+  start: () => Promise<void>;
   /** Promise which resolves when the currently running build has completed. */
   ready: () => Promise<void>;
   /** Stop the build process. */
@@ -35,6 +38,8 @@ export type BuildService = {
 /** Start the build service. */
 export function build(config: BuildConfig): BuildService {
   let log = debug(`asap:Build:${config.buildId}`);
+  let platform = config.platform ?? "browser";
+  let env = config.env ?? "production";
 
   let outputPath = path.join(
     config.projectRoot,
@@ -42,7 +47,8 @@ export function build(config: BuildConfig): BuildService {
     ".cache",
     "asap",
     "build",
-    config.buildId
+    config.buildId,
+    env
   );
 
   let initialBuild = deferred<esbuild.BuildIncremental>();
@@ -57,32 +63,41 @@ export function build(config: BuildConfig): BuildService {
   };
 
   log(`starting initial build`);
-  esbuild
-    .build({
-      absWorkingDir: config.projectRoot,
-      entryPoints: config.entryPoints,
-      outdir: outputPath,
-      bundle: true,
-      loader: { ".js": "jsx" },
-      metafile: true,
-      splitting: true,
-      incremental: true,
-      format: "esm",
-      platform: config.platform ?? "browser",
-      external: config.external ?? [],
-    })
-    .then((build) => {
-      initialBuild.resolve(build);
-      onBuild(build);
-    });
 
   return {
     outputPath,
+    start() {
+      esbuild
+        .build({
+          absWorkingDir: config.projectRoot,
+          entryPoints: config.entryPoints,
+          outdir: outputPath,
+          bundle: true,
+          loader: { ".js": "jsx" },
+          metafile: true,
+          splitting: platform === "browser",
+          treeShaking: env === "production",
+          incremental: true,
+          format: "esm",
+          platform,
+          external: config.external ?? [],
+          minify: env === "production",
+          define: {
+            NODE_NEV: env,
+          },
+        })
+        .then((build) => {
+          initialBuild.resolve(build);
+          onBuild(build);
+        });
+      return currentBuild.promise.then(() => {});
+    },
     async stop() {
       let [ib, cb] = await Promise.all([
         initialBuild.promise,
         currentBuild.promise,
       ]);
+      ib.rebuild.dispose();
       ib.stop?.();
       cb.stop?.();
     },
