@@ -50,10 +50,16 @@ entry point (this is the module which is being run when you invoke `asap`):
     ├── types.ts
     └── Watch.ts
 
-The `src` directory hosts the `asap` library which is a client side application
-framework:
+The `src` directory hosts the `asap` library which exposes applicaton api:
 
     src
     ├── index.tsx
+    ├── api.ts
     ├── Router.ts
     └── Routing.ts
+
+There are three main entry points to the asap:
+
+- `bin/main.ts` provides `asap` executable
+- `src/index.ts` provides `@mechanize/asap` client side application library
+- `src/api.ts` provides `@mechanize/asap/api` server side API library
