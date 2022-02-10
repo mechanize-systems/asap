@@ -1,6 +1,6 @@
 # asap-example-basic
 
-A basic example using [asap][].
+A basic example of using [asap][] to build a simple React app with server API.
 
 The structure is the following:
 
@@ -11,6 +11,10 @@ The structure is the following:
       │   ├── HelloPage.tsx
       │   ├── IndexPage.tsx
       │   └── index.ts
+
+- `api.ts` hosts the API for the application.
+
+      ├── api.ts
 
 - `package.json` contains project metadata and specifies dependencies' version
   constraints, `pnpm-lock.yaml` locks those constraints to specific versions so

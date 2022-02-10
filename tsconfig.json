@@ -35,7 +35,7 @@
     "incremental": true,
     "typeRoots": ["./typings/", "node_modules/@types"]
   },
-  "include": ["src/**/*", "bin/**/*"],
+  "include": ["src/**/*", "bin/**/*", "typings/**/*"],
   "ts-node": {
     "compilerOptions": {
       "module": "commonjs"

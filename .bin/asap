@@ -1,3 +1,5 @@
 #!/bin/bash
+set -e
 make -s -C "$PROJECT__ROOT" build
-exec node "$PROJECT__ROOT/main.js" "$@"
+exec node --experimental-vm-modules \
+  "$PROJECT__ROOT/main.js" "$@"

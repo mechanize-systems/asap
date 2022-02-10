@@ -82,7 +82,6 @@ export class Watch {
     this._client.on("subscription", (resp) => {
       log("changes detected");
       if (resp.subscription !== spec.path) return;
-      console.log(resp.files[0].name);
       onChange(resp);
     });
     return def.promise.then(() => () => {

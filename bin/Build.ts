@@ -13,6 +13,8 @@ export type BuildConfig = {
   buildId: string;
   projectRoot: string;
   entryPoints: { [out: string]: string };
+  platform?: esbuild.Platform;
+  external?: esbuild.BuildOptions["external"];
 };
 
 /**
@@ -64,6 +66,8 @@ export function build(config: BuildConfig): BuildService {
       splitting: true,
       incremental: true,
       format: "esm",
+      platform: config.platform ?? "browser",
+      external: config.external ?? [],
     })
     .then((build) => {
       initialBuild.resolve(build);

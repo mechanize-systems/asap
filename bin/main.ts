@@ -1,5 +1,7 @@
 import "source-map-support/register";
 import * as path from "path";
+import * as vm from "vm";
+import * as fs from "fs";
 import * as Fastify from "fastify";
 import FastifyStatic from "fastify-static";
 import debug from "debug";
@@ -8,6 +10,8 @@ import * as Cmd from "cmd-ts";
 import type * as types from "./types";
 import * as Build from "./Build";
 import * as Watch from "./Watch";
+import * as Routing from "../src/Routing";
+import type * as API from "../src/api";
 
 let log = debug("asap:main");
 
@@ -61,7 +65,7 @@ export async function main(config: types.AppConfig) {
   let watch = new Watch.Watch();
   let clock = await watch.clock(config.projectRoot);
 
-  let build = Build.build({
+  let buildApp = Build.build({
     buildId: "app",
     projectRoot: projectRoot,
     entryPoints: {
@@ -69,22 +73,56 @@ export async function main(config: types.AppConfig) {
     },
   });
 
-  await watch.subscribe({ path: projectRoot, since: clock }, () => {
-    build.rebuild();
+  let buildApi = Build.build({
+    buildId: "api",
+    projectRoot: projectRoot,
+    entryPoints: {
+      main: path.join(projectRoot, "api"),
+    },
+    platform: "node",
   });
 
-  let app = Fastify.fastify();
+  await watch.subscribe({ path: projectRoot, since: clock }, () => {
+    buildApp.rebuild();
+    buildApi.rebuild();
+  });
+
+  let app = Fastify.fastify({});
 
   app.addHook("preHandler", async (req) => {
     // For /__static/ let's wait till the current build is ready.
     if (req.url.startsWith("/__static/")) {
-      await build.ready;
+      await buildApp.ready;
     }
   });
 
   app.register(FastifyStatic, {
     prefix: "/__static",
-    root: build.outputPath,
+    root: buildApp.outputPath,
+  });
+
+  app.get("/_api*", async (req, res) => {
+    await buildApi.ready;
+    let apiBundlePath = path.join(buildApi.outputPath, "main.js");
+    let apiBundle = await fs.promises.readFile(apiBundlePath, "utf8");
+    let context = vm.createContext({});
+    let mod = new vm.SourceTextModule(apiBundle, { context });
+    await mod.link((specifier, _referencingModule) => {
+      throw new Error(`ERROR LINKING ${specifier}`);
+    });
+    await mod.evaluate();
+    let routes = (mod.namespace as { routes: API.Route<string>[] }).routes;
+    if (routes == null) throw new Error("api: routes are not defined");
+
+    let reqPath = (req.params as { "*": string })["*"];
+    for (let route of Object.values(routes)) {
+      let params = Routing.matches(route, reqPath);
+      if (params == null) continue;
+      return route.handle(req, res, params);
+    }
+
+    res.statusCode = 404;
+    return "404 NOT FOUND";
   });
 
   app.get("/*", async (_req, res) => {
