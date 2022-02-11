@@ -59,8 +59,8 @@ type ServeConfig = {
 
 type App = {
   config: AppConfig;
-  buildApi: Build.BuildService;
-  buildApp: Build.BuildService;
+  buildApi: Build.BuildService<{ main: string }>;
+  buildApp: Build.BuildService<{ main: string }>;
 };
 
 let info = debug("asap:info");
@@ -140,7 +140,7 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
 
   server.register(FastifyStatic, {
     prefix: "/__static",
-    root: app.buildApp.outputPath,
+    root: app.buildApp.buildPath,
   });
 
   server.get("/_api*", serveApi(app));
@@ -153,33 +153,37 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
 }
 
 let serveApp =
-  (_app: App): Fastify.RouteHandler =>
-  (_req, res) => {
+  (app: App): Fastify.RouteHandler =>
+  async (_req, res) => {
+    let outs = await app.buildApp.ready();
+    let bundleName = outs?.main.relativeOutputPath ?? "__buildError.js";
     res.statusCode = 200;
     res.header("Content-Type", "text/html");
     res.send(
       `
-    <!doctype html>
-    <html>
-      <body>
-        <div id="asap"></div>
-        <script type="module" src="/__static/main.js"></script>
-      </body>
-    </html>
-    `
+      <!doctype html>
+      <html>
+        <body>
+          <div id="asap"></div>
+          <script type="module" src="/__static/${bundleName}"></script>
+        </body>
+      </html>
+      `
     );
   };
 
 let serveApi =
   (app: App): Fastify.RouteHandler =>
   async (req, res) => {
-    if (app.config.env === "development") {
-      // Wait till the current build is ready.
-      await app.buildApi.ready();
+    let outs = await app.buildApi.ready();
+    let bundlePath = outs?.main.outputPath;
+    if (bundlePath == null) {
+      res.statusCode = 500;
+      res.send("500 INTERNAL SERVER ERROR");
+      return;
     }
 
     // TODO we should cache the eval'ed bundle if not in development
-    let bundlePath = path.join(app.buildApi.outputPath, "main.js");
     let bundle = await fs.promises.readFile(bundlePath, "utf8");
 
     let context = vm.createContext({});
@@ -196,6 +200,7 @@ let serveApi =
     if (routes == null) {
       res.statusCode = 404;
       res.send("404 NOT FOUND");
+      return;
     }
 
     let reqPath = (req.params as { "*": string })["*"];

@@ -34,6 +34,7 @@
     "fb-watchman": "^2.0.1",
     "regexparam": "^2.0.0",
     "source-map-support": "^0.5.21",
+    "tempfile": "^4.0.0",
     "word-wrap": "^1.2.3"
   }
 }

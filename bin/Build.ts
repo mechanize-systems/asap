@@ -5,15 +5,23 @@
  */
 
 import * as path from "path";
+import tempfile from "tempfile";
+import * as fs from "fs";
 import * as esbuild from "esbuild";
 import { deferred } from "./PromiseUtil";
 import debug from "debug";
 import * as Logging from "./Logging";
 
-export type BuildConfig = {
+export type EnrtyPoints = { [name: string]: string };
+
+export type Output<E extends EnrtyPoints> = {
+  [K in keyof E]: { outputPath: string; relativeOutputPath: string };
+};
+
+export type BuildConfig<E extends EnrtyPoints> = {
   buildId: string;
   projectRoot: string;
-  entryPoints: { [out: string]: string };
+  entryPoints: E;
   platform?: esbuild.Platform;
   external?: esbuild.BuildOptions["external"];
   onBuild?: (b: esbuild.BuildIncremental) => void;
@@ -23,27 +31,29 @@ export type BuildConfig = {
 /**
  * BuildService exposes methods for managing a build process.
  */
-export type BuildService = {
+export type BuildService<E extends EnrtyPoints> = {
   /** The path which hosts the output of tje build. */
-  outputPath: string;
+  buildPath: string;
   /** Schedule a rebuild. */
   rebuild: () => Promise<void>;
   /** Start the initial build. */
   start: () => Promise<void>;
   /** Promise which resolves when the currently running build has completed. */
-  ready: () => Promise<boolean>;
+  ready: () => Promise<Output<E> | null>;
   /** Stop the build process. */
   stop: () => Promise<void>;
 };
 
 /** Start the build service. */
-export function build(config: BuildConfig): BuildService {
+export function build<E extends EnrtyPoints>(
+  config: BuildConfig<E>
+): BuildService<E> {
   let log = debug(`asap:Build:${config.buildId}`);
 
   let platform = config.platform ?? "browser";
   let env = config.env ?? "production";
 
-  let outputPath = path.join(
+  let buildPath = path.join(
     config.projectRoot,
     "node_modules",
     ".cache",
@@ -53,6 +63,8 @@ export function build(config: BuildConfig): BuildService {
     env
   );
 
+  let metafilePath = path.join(buildPath, "metafile.json");
+
   let makeDeferredBuild = () => {
     let b = deferred<esbuild.BuildIncremental>();
     // Suppress 'unhandledRejection' event for build.
@@ -60,13 +72,20 @@ export function build(config: BuildConfig): BuildService {
     return b;
   };
 
+  let started = false;
   let initialBuild = makeDeferredBuild();
   let currentBuild = makeDeferredBuild();
   let currentBuildStart = performance.now();
+  let metafileOnDisk: esbuild.Metafile | null = null;
 
-  let onBuild = (b: esbuild.BuildIncremental) => {
+  let onBuild = async (b: esbuild.BuildIncremental) => {
     let spent = performance.now() - currentBuildStart;
     log(`onBuild`, `${spent.toFixed(0)}ms`);
+    if (b.metafile != null) {
+      let metafileTempPath = tempfile(".json");
+      await fs.promises.writeFile(metafileTempPath, JSON.stringify(b.metafile));
+      await fs.promises.rename(metafileTempPath, metafilePath);
+    }
     currentBuild.resolve(b);
     if (config.onBuild != null) config.onBuild(b);
   };
@@ -93,13 +112,16 @@ export function build(config: BuildConfig): BuildService {
 
   let start = async () => {
     log(`start()`);
+    started = true;
+    metafileOnDisk = null;
     let build: null | esbuild.BuildIncremental = null;
     currentBuildStart = performance.now();
     try {
       build = await esbuild.build({
         absWorkingDir: config.projectRoot,
         entryPoints: config.entryPoints,
-        outdir: outputPath,
+        entryNames: '[dir]/[name]-[hash]',
+        outdir: buildPath,
         bundle: true,
         loader: { ".js": "jsx" },
         metafile: true,
@@ -122,7 +144,7 @@ export function build(config: BuildConfig): BuildService {
     }
     if (build != null) {
       initialBuild.resolve(build);
-      onBuild(build);
+      await onBuild(build);
     }
   };
 
@@ -137,6 +159,7 @@ export function build(config: BuildConfig): BuildService {
       let b = await initialBuild.promise;
       b.stop?.();
     } catch (_err) {}
+    started = false;
   };
 
   let rebuild = async () => {
@@ -156,7 +179,7 @@ export function build(config: BuildConfig): BuildService {
         return;
       }
       if (build != null) {
-        onBuild(build);
+        await onBuild(build);
       }
     } else if (initialBuild.isRejected) {
       log(`initialBuild.isRejected`);
@@ -170,18 +193,73 @@ export function build(config: BuildConfig): BuildService {
     }
   };
 
+  let ready = async () => {
+    if (!started) {
+      if (metafileOnDisk != null)
+        return outputByEntryPoint(
+          config.entryPoints,
+          buildPath,
+          config.projectRoot,
+          metafileOnDisk
+        );
+      try {
+        metafileOnDisk = JSON.parse(
+          await fs.promises.readFile(metafilePath, "utf8")
+        );
+        return outputByEntryPoint(
+          config.entryPoints,
+          buildPath,
+          config.projectRoot,
+          metafileOnDisk as esbuild.Metafile
+        );
+      } catch (_err) {
+        return null;
+      }
+    } else {
+      try {
+        await currentBuild.promise;
+        let metafile = currentBuild.value.metafile;
+        if (metafile == null) return null;
+        return outputByEntryPoint(
+          config.entryPoints,
+          buildPath,
+          config.projectRoot,
+          metafile
+        );
+      } catch (_err) {
+        return null;
+      }
+    }
+  };
+
   return {
-    outputPath,
+    buildPath,
     start,
     stop,
     rebuild,
-    async ready() {
-      try {
-        await currentBuild.promise;
-        return true;
-      } catch (_err) {
-        return false;
-      }
-    },
+    ready,
   };
+}
+
+/**
+ * Get a map from entryPoint names to output files.
+ */
+function outputByEntryPoint<E extends EnrtyPoints>(
+  entryPoints: E,
+  buildPath: string,
+  projectRoot: string,
+  metafile: esbuild.Metafile
+): Output<E> {
+  let names: (keyof E)[] = Object.keys(entryPoints);
+  let map: Output<E> = {} as any;
+  Object.keys(metafile.outputs).forEach((outputPath, idx) => {
+    let name = names[idx];
+    if (name == null) return;
+    outputPath = path.join(projectRoot, outputPath);
+    map[name] = {
+      outputPath,
+      relativeOutputPath: path.relative(buildPath, outputPath),
+    };
+  });
+  return map;
 }

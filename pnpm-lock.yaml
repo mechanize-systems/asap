@@ -20,6 +20,7 @@ specifiers:
   react-dom: rc
   regexparam: ^2.0.0
   source-map-support: ^0.5.21
+  tempfile: ^4.0.0
   ts-node: ^10.5.0
   typescript: ^4.5.5
   typescript-language-server: ^0.9.6
@@ -36,6 +37,7 @@ dependencies:
   fb-watchman: 2.0.1
   regexparam: 2.0.0
   source-map-support: 0.5.21
+  tempfile: 4.0.0
   word-wrap: 1.2.3
 
 devDependencies:
@@ -1575,7 +1577,14 @@ packages:
   /temp-dir/2.0.0:
     resolution: {integrity: sha512-aoBAniQmmwtcKp/7BzsH8Cxzv8OL736p7v1ihGb5e9DJ9kTwGWHrQrVB5+lfVDzfGrdRzXch+ig7LHaY1JTOrg==}
     engines: {node: '>=8'}
-    dev: true
+
+  /tempfile/4.0.0:
+    resolution: {integrity: sha512-dNH6UWyI8kijDmLVb0IJvCG4JZ5uOmy40CLoi/dVySL49v0f0Y+jIN2rE6Hj85y8mIIya1vwpKZlL9jASs5ktg==}
+    engines: {node: '>=12.20'}
+    dependencies:
+      temp-dir: 2.0.0
+      uuid: 8.3.2
+    dev: false
 
   /tempy/1.0.1:
     resolution: {integrity: sha512-biM9brNqxSc04Ee71hzFbryD11nX7VPhQQY32AdDmjFvodsRFz/3ufeoTZ6uYkRFfGo188tENcASNs3vTdsM0w==}
@@ -1700,6 +1709,11 @@ packages:
 
   /util-deprecate/1.0.2:
     resolution: {integrity: sha1-RQ1Nyfpw3nMnYvvS1KKJgUGaDM8=}
+    dev: false
+
+  /uuid/8.3.2:
+    resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
+    hasBin: true
     dev: false
 
   /v8-compile-cache-lib/3.0.0:
