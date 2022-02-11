@@ -24,6 +24,8 @@
     "typescript-language-server": "^0.9.6"
   },
   "dependencies": {
+    "@parcel/codeframe": "^2.3.1",
+    "chalk": "^4",
     "cmd-ts": "^0.10.0",
     "debug": "^4.3.3",
     "esbuild": "^0.14.20",
@@ -31,6 +33,7 @@
     "fastify-static": "^4.5.0",
     "fb-watchman": "^2.0.1",
     "regexparam": "^2.0.0",
-    "source-map-support": "^0.5.21"
+    "source-map-support": "^0.5.21",
+    "word-wrap": "^1.2.3"
   }
 }

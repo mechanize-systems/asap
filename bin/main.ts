@@ -209,7 +209,7 @@ let serveApi =
  */
 
 if (!("DEBUG" in process.env)) {
-  debug.enable("asap:info");
+  debug.enable("asap:info,asap:error");
 }
 
 let appConfigArgs = {

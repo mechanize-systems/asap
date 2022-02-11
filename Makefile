@@ -12,7 +12,7 @@ check:
 
 .PHONY: clean
 clean:
-	rm -rf lib main.js *.d.ts
+	rm -rf lib main.js
 
 main.js: $(wildcard bin/*) pnpm-lock.yaml
 	@mkdir -p $(@D)

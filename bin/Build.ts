@@ -8,6 +8,7 @@ import * as path from "path";
 import * as esbuild from "esbuild";
 import { deferred } from "./PromiseUtil";
 import debug from "debug";
+import * as Logging from "./Logging";
 
 export type BuildConfig = {
   buildId: string;
@@ -65,13 +66,33 @@ export function build(config: BuildConfig): BuildService {
 
   let onBuild = (b: esbuild.BuildIncremental) => {
     let spent = performance.now() - currentBuildStart;
-    log(`built in %sms`, spent.toFixed(0));
+    log(`onBuild`, `${spent.toFixed(0)}ms`);
     currentBuild.resolve(b);
     if (config.onBuild != null) config.onBuild(b);
   };
 
+  let onBuildError = (err: Error) => {
+    log(`onBuildError`);
+    if ("errors" in err) {
+      Logging.error(
+        `building ${config.buildId}`,
+        (err as any).errors.map(
+          (e: any): Logging.CodeLoc => ({
+            message: e.text,
+            path: path.join(config.projectRoot, e.location.file),
+            line: e.location.line,
+            column: e.location.column,
+          })
+        )
+      );
+    } else {
+      Logging.error(`building ${config.buildId}: ${String(err)}`);
+    }
+    currentBuild.reject(err);
+  };
+
   let start = async () => {
-    log(`starting initial build`);
+    log(`start()`);
     let build: null | esbuild.BuildIncremental = null;
     currentBuildStart = performance.now();
     try {
@@ -89,13 +110,14 @@ export function build(config: BuildConfig): BuildService {
         platform,
         external: config.external ?? [],
         minify: env === "production",
+        logLevel: "silent",
         define: {
           NODE_NEV: env,
         },
       });
     } catch (err: any) {
       initialBuild.reject(err);
-      currentBuild.reject(err);
+      onBuildError(err);
       return;
     }
     if (build != null) {
@@ -105,10 +127,11 @@ export function build(config: BuildConfig): BuildService {
   };
 
   let stop = async () => {
+    log(`stop()`);
     try {
       let b = await initialBuild.promise;
-      b.stop?.();
       b.rebuild.dispose();
+      b.stop?.();
     } catch (_err) {}
     try {
       let b = await initialBuild.promise;
@@ -117,35 +140,34 @@ export function build(config: BuildConfig): BuildService {
   };
 
   let rebuild = async () => {
-    log(`rebuilding`);
-    try {
-      if (initialBuild.isResolved) {
-        let ib = initialBuild.value;
-        if (!currentBuild.isCompleted) {
-          await currentBuild.promise;
-        }
-        currentBuild.value.stop?.();
-        currentBuild = makeDeferredBuild();
-        currentBuildStart = performance.now();
-        let build: esbuild.BuildIncremental | null = null;
-        try {
-          build = await ib.rebuild();
-        } catch (err: any) {
-          currentBuild.reject(err);
-          return;
-        }
-        if (build != null) {
-          onBuild(build);
-        }
-      } else if (initialBuild.isRejected) {
-        initialBuild = makeDeferredBuild();
-        currentBuild = makeDeferredBuild();
-        start();
-      } else {
-        await initialBuild.promise;
-        await rebuild();
+    log(`rebuild()`);
+    if (initialBuild.isResolved) {
+      log(`initialBuild.isResolved`);
+      let ib = initialBuild.value;
+      if (!currentBuild.isCompleted) await currentBuild.promise;
+      if (currentBuild.isResolved) currentBuild.value.stop?.();
+      currentBuild = makeDeferredBuild();
+      currentBuildStart = performance.now();
+      let build: esbuild.BuildIncremental | null = null;
+      try {
+        build = await ib.rebuild();
+      } catch (err: any) {
+        onBuildError(err);
+        return;
       }
-    } catch (_err) {}
+      if (build != null) {
+        onBuild(build);
+      }
+    } else if (initialBuild.isRejected) {
+      log(`initialBuild.isRejected`);
+      initialBuild = makeDeferredBuild();
+      currentBuild = makeDeferredBuild();
+      start();
+    } else {
+      log(`await initialBuild`);
+      await initialBuild.promise;
+      await rebuild();
+    }
   };
 
   return {

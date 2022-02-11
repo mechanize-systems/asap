@@ -1,11 +1,13 @@
 lockfileVersion: 5.3
 
 specifiers:
+  '@parcel/codeframe': ^2.3.1
   '@types/debug': ^4.1.7
   '@types/fb-watchman': ^2.0.1
   '@types/node': ^17.0.16
   '@types/react': ^17.0.39
   '@types/react-dom': ^17.0.11
+  chalk: ^4
   cmd-ts: ^0.10.0
   debug: ^4.3.3
   esbuild: ^0.14.20
@@ -21,8 +23,11 @@ specifiers:
   ts-node: ^10.5.0
   typescript: ^4.5.5
   typescript-language-server: ^0.9.6
+  word-wrap: ^1.2.3
 
 dependencies:
+  '@parcel/codeframe': 2.3.1
+  chalk: 4.1.2
   cmd-ts: 0.10.0
   debug: 4.3.3
   esbuild: 0.14.20
@@ -31,6 +36,7 @@ dependencies:
   fb-watchman: 2.0.1
   regexparam: 2.0.0
   source-map-support: 0.5.21
+  word-wrap: 1.2.3
 
 devDependencies:
   '@types/debug': 4.1.7
@@ -118,6 +124,13 @@ packages:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.13.0
     dev: true
+
+  /@parcel/codeframe/2.3.1:
+    resolution: {integrity: sha512-sdNvbg9qYS2pwzqyyyt+wZfNGuy7EslzDLbzQclFZmhD6e770mcYoi8/7i7D/AONbXiI15vwNmgOdcUIXtPxbA==}
+    engines: {node: '>= 12.0.0'}
+    dependencies:
+      chalk: 4.1.2
+    dev: false
 
   /@tsconfig/node10/1.0.8:
     resolution: {integrity: sha512-6XFfSQmMgq0CFLY1MslA/CPUfhIL919M1rMsa5lP2P097N2Wd1sSX0tx1u4olM16fLNhtHZpRhedZJphNJqmZg==}
@@ -1739,7 +1752,6 @@ packages:
   /word-wrap/1.2.3:
     resolution: {integrity: sha512-Hz/mrNwitNRh/HUAtM/VT/5VH+ygD6DV7mYKZAtHOrbs8U7lvPS6xf7EJKMF0uW1KJCl0H701g3ZGus+muE5vQ==}
     engines: {node: '>=0.10.0'}
-    dev: true
 
   /wrappy/1.0.2:
     resolution: {integrity: sha1-tSQ9jz7BqjXxNkYFvA0QNuMKtp8=}
