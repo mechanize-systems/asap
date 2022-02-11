@@ -32,6 +32,7 @@
     "fastify": "^3.27.1",
     "fastify-static": "^4.5.0",
     "fb-watchman": "^2.0.1",
+    "memoize-weak": "^1.0.2",
     "regexparam": "^2.0.0",
     "source-map-support": "^0.5.21",
     "tempfile": "^4.0.0",

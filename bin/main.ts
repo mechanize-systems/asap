@@ -7,8 +7,10 @@ import FastifyStatic from "fastify-static";
 import debug from "debug";
 import * as Cmd from "cmd-ts";
 import * as CmdFs from "cmd-ts/batteries/fs";
+import memoize from "memoize-weak";
 
 import * as Build from "./Build";
+import * as Logging from "./Logging";
 import * as Watch from "./Watch";
 import * as Routing from "../src/Routing";
 import type * as API from "../src/api";
@@ -64,6 +66,12 @@ type App = {
 };
 
 let info = debug("asap:info");
+let log = debug("asap:main");
+
+function fatal(msg: string): never {
+  Logging.error(msg);
+  process.exit(1);
+}
 
 function createApp(config: AppConfig): App {
   let buildApp = Build.build({
@@ -86,6 +94,7 @@ function createApp(config: AppConfig): App {
     env: config.env,
     onBuild: () => info(`api build ready`),
   });
+
   return { buildApi, buildApp, config };
 }
 
@@ -127,6 +136,21 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
       app.buildApi.rebuild();
     });
     info("watching project for changes");
+  }
+
+  if (env === "production") {
+    let [appOutput, apiOutput] = await Promise.all([
+      app.buildApp.ready(),
+      app.buildApi.ready(),
+    ]);
+    if (appOutput == null) {
+      fatal("app bundle was not built");
+    }
+    if (apiOutput == null) {
+      fatal("api bundle was not built");
+    }
+    // Preload API bundle at the startup so we fail early.
+    await loadAPI(apiOutput);
   }
 
   let server = Fastify.fastify({});
@@ -175,15 +199,42 @@ let serveApp =
 let serveApi =
   (app: App): Fastify.RouteHandler =>
   async (req, res) => {
-    let outs = await app.buildApi.ready();
-    let bundlePath = outs?.main.outputPath;
-    if (bundlePath == null) {
+    let output = await app.buildApi.ready();
+    if (output == null) {
       res.statusCode = 500;
       res.send("500 INTERNAL SERVER ERROR");
       return;
     }
 
-    // TODO we should cache the eval'ed bundle if not in development
+    let api = await loadAPI(output);
+    if (api == null) {
+      res.statusCode = 500;
+      res.send("500 INTERNAL SERVER ERROR");
+      return;
+    }
+
+    let reqPath = (req.params as { "*": string })["*"];
+    for (let route of api.routes) {
+      let params = Routing.matches(route, reqPath);
+      if (params == null) continue;
+      return route.handle(req, res, params);
+    }
+
+    res.statusCode = 404;
+    res.send("404 NOT FOUND");
+  };
+
+type LoadedAPI = {
+  routes: API.Routes;
+};
+
+let loadAPI = memoize(
+  async (output: Build.Output<{ main: string }>): Promise<LoadedAPI | null> => {
+    log("loading api bundle");
+
+    let bundlePath = output.main.outputPath;
+    if (bundlePath == null) return null;
+
     let bundle = await fs.promises.readFile(bundlePath, "utf8");
 
     let context = vm.createContext({});
@@ -195,24 +246,11 @@ let serveApi =
       throw new Error(msg);
     });
     await mod.evaluate();
-
-    let routes = (mod.namespace as { routes: API.Route<string>[] }).routes;
-    if (routes == null) {
-      res.statusCode = 404;
-      res.send("404 NOT FOUND");
-      return;
-    }
-
-    let reqPath = (req.params as { "*": string })["*"];
-    for (let route of Object.values(routes)) {
-      let params = Routing.matches(route, reqPath);
-      if (params == null) continue;
-      return route.handle(req, res, params);
-    }
-
-    res.statusCode = 404;
-    res.send("404 NOT FOUND");
-  };
+    let routes = (mod.namespace as { routes: API.Routes }).routes;
+    if (routes == null) return null;
+    return { routes };
+  }
+);
 
 /**
  * Command Line Interface.

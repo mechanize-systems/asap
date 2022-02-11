@@ -65,29 +65,49 @@ export function build<E extends EnrtyPoints>(
 
   let metafilePath = path.join(buildPath, "metafile.json");
 
-  let makeDeferredBuild = () => {
-    let b = deferred<esbuild.BuildIncremental>();
+  let deferredWithCatch = <T>() => {
+    let b = deferred<T>();
     // Suppress 'unhandledRejection' event for build.
     b.promise.catch(() => {});
     return b;
   };
 
-  let started = false;
-  let initialBuild = makeDeferredBuild();
-  let currentBuild = makeDeferredBuild();
-  let currentBuildStart = performance.now();
-  let metafileOnDisk: esbuild.Metafile | null = null;
+  let loadOutput = async () => {
+    let metafile = JSON.parse(await fs.promises.readFile(metafilePath, "utf8"));
+    return outputByEntryPoint(
+      config.entryPoints,
+      buildPath,
+      config.projectRoot,
+      metafile
+    );
+  };
 
-  let onBuild = async (b: esbuild.BuildIncremental) => {
+  let started = false;
+  let previousOutput: null | Promise<Output<E>> = null;
+  let initialBuild = deferredWithCatch<esbuild.BuildIncremental>();
+  let current =
+    deferredWithCatch<{ build: esbuild.BuildIncremental; output: Output<E> }>();
+  let currentBuildStart = performance.now();
+
+  let onBuild = async (build: esbuild.BuildIncremental) => {
     let spent = performance.now() - currentBuildStart;
     log(`onBuild`, `${spent.toFixed(0)}ms`);
-    if (b.metafile != null) {
+    if (build.metafile != null) {
       let metafileTempPath = tempfile(".json");
-      await fs.promises.writeFile(metafileTempPath, JSON.stringify(b.metafile));
+      await fs.promises.writeFile(
+        metafileTempPath,
+        JSON.stringify(build.metafile)
+      );
       await fs.promises.rename(metafileTempPath, metafilePath);
     }
-    currentBuild.resolve(b);
-    if (config.onBuild != null) config.onBuild(b);
+    let output = outputByEntryPoint(
+      config.entryPoints,
+      buildPath,
+      config.projectRoot,
+      build.metafile!
+    );
+    current.resolve({ build, output });
+    if (config.onBuild != null) config.onBuild(build);
   };
 
   let onBuildError = (err: Error) => {
@@ -112,14 +132,14 @@ export function build<E extends EnrtyPoints>(
     } else {
       Logging.error(`building ${config.buildId}: ${String(err)}`);
     }
-    currentBuild.reject(err);
+    current.reject(err);
   };
 
   let start = async () => {
     log(`start()`);
-    started = true;
-    metafileOnDisk = null;
     let build: null | esbuild.BuildIncremental = null;
+    started = true;
+    previousOutput = null;
     currentBuildStart = performance.now();
     try {
       build = await esbuild.build({
@@ -172,9 +192,9 @@ export function build<E extends EnrtyPoints>(
     if (initialBuild.isResolved) {
       log(`initialBuild.isResolved`);
       let ib = initialBuild.value;
-      if (!currentBuild.isCompleted) await currentBuild.promise;
-      if (currentBuild.isResolved) currentBuild.value.stop?.();
-      currentBuild = makeDeferredBuild();
+      if (!current.isCompleted) await current.promise;
+      if (current.isResolved) current.value.build.stop?.();
+      current = deferredWithCatch();
       currentBuildStart = performance.now();
       let build: esbuild.BuildIncremental | null = null;
       try {
@@ -188,8 +208,8 @@ export function build<E extends EnrtyPoints>(
       }
     } else if (initialBuild.isRejected) {
       log(`initialBuild.isRejected`);
-      initialBuild = makeDeferredBuild();
-      currentBuild = makeDeferredBuild();
+      initialBuild = deferredWithCatch();
+      current = deferredWithCatch();
       start();
     } else {
       log(`await initialBuild`);
@@ -200,37 +220,16 @@ export function build<E extends EnrtyPoints>(
 
   let ready = async () => {
     if (!started) {
-      if (metafileOnDisk != null)
-        return outputByEntryPoint(
-          config.entryPoints,
-          buildPath,
-          config.projectRoot,
-          metafileOnDisk
-        );
       try {
-        metafileOnDisk = JSON.parse(
-          await fs.promises.readFile(metafilePath, "utf8")
-        );
-        return outputByEntryPoint(
-          config.entryPoints,
-          buildPath,
-          config.projectRoot,
-          metafileOnDisk as esbuild.Metafile
-        );
+        if (previousOutput == null) previousOutput = loadOutput();
+        return await previousOutput;
       } catch (_err) {
         return null;
       }
     } else {
       try {
-        await currentBuild.promise;
-        let metafile = currentBuild.value.metafile;
-        if (metafile == null) return null;
-        return outputByEntryPoint(
-          config.entryPoints,
-          buildPath,
-          config.projectRoot,
-          metafile
-        );
+        await current.promise;
+        return current.value.output;
       } catch (_err) {
         return null;
       }

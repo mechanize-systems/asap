@@ -10,6 +10,8 @@ export type Route<P extends string> = Routing.Route<P> & {
   handle: Handler<Routing.RouteParams<P>>;
 };
 
+export type Routes = Route<string>[];
+
 type Handler<Params> = (
   req: Request,
   res: Response,
