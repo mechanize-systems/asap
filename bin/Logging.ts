@@ -25,16 +25,10 @@ export type CodeLoc = {
 function makeError(message: string, locs: CodeLoc[]): string {
   let terminalWidth = process.stdout.columns;
   let lines = [];
-  lines.push(`  ${chalk.redBright("asap:error")} ${message}`);
+  lines.push(`  ${chalk.redBright("asap:error")} ${wrapMessage(message, 13)}`);
   for (let loc of locs) {
     let code = fs.readFileSync(loc.path, "utf8");
-    let indent = "".padStart(loc.column + 8, " ");
-    let message = loc.message;
-    message = wordWrap(message, {
-      width: terminalWidth - loc.column - 8,
-      indent,
-    });
-    message = message.trimStart();
+    let message = wrapMessage(loc.message, loc.column + 8);
     lines.push(
       codeFrame(
         code,
@@ -53,4 +47,14 @@ function makeError(message: string, locs: CodeLoc[]): string {
     );
   }
   return lines.join("\n");
+}
+
+function wrapMessage(message: string, indent: number) {
+  let indentString = "".padStart(indent, " ");
+  message = wordWrap(message, {
+    width: process.stdout.columns - indent,
+    indent: indentString,
+  });
+  message = message.trimStart();
+  return message;
 }

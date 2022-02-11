@@ -93,17 +93,22 @@ export function build<E extends EnrtyPoints>(
   let onBuildError = (err: Error) => {
     log(`onBuildError`);
     if ("errors" in err) {
-      Logging.error(
-        `building ${config.buildId}`,
-        (err as any).errors.map(
-          (e: any): Logging.CodeLoc => ({
+      let locs: Logging.CodeLoc[] = [];
+      (err as any).errors.forEach((e: any) => {
+        if (e.location != null)
+          locs.push({
             message: e.text,
             path: path.join(config.projectRoot, e.location.file),
             line: e.location.line,
             column: e.location.column,
-          })
-        )
-      );
+          });
+        else {
+          Logging.error(e.text);
+        }
+      });
+      if (locs.length > 0) {
+        Logging.error(`building ${config.buildId}`, locs);
+      }
     } else {
       Logging.error(`building ${config.buildId}: ${String(err)}`);
     }
@@ -120,7 +125,7 @@ export function build<E extends EnrtyPoints>(
       build = await esbuild.build({
         absWorkingDir: config.projectRoot,
         entryPoints: config.entryPoints,
-        entryNames: '[dir]/[name]-[hash]',
+        entryNames: "[dir]/[name]-[hash]",
         outdir: buildPath,
         bundle: true,
         loader: { ".js": "jsx" },
