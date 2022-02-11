@@ -26,13 +26,13 @@ mkdir example && cd example && pnpm init
 
 Add dependencies to the project:
 
-```
+```sh
 pnpm add react react-dom @mechanize/asap
 ```
 
 Let's create a simple app of two pages:
 
-```
+```sh
 cat <<EOF
 import * as ASAP from "@mechanize/asap";
 
@@ -47,13 +47,13 @@ EOF > ./app.js
 
 Now we can serve the app:
 
-```
+```sh
 pnpm asap serve
 ```
 
 Let's add a few simple API methods:
 
-```
+```sh
 cat <<EOF
 import * as api from "@mechanize/asap/api";
 
@@ -70,19 +70,19 @@ EOF > ./api.js
 
 Serve the app with API:
 
-```
+```sh
 pnpm asap serve
 ```
 
 Now for production you'd want to the optimized bundle first:
 
-```
+```sh
 pnpm asap build --env production
 ```
 
 And finally serve the app in production environment:
 
-```
+```sh
 pnpm asap serve --env production
 ```
 
@@ -94,4 +94,3 @@ asap works on top of fastify, esbuild and React:
 - The fastify is used to serve a page skeleton, app pages bundle and handle API
   requests.
 - On changes asap rebuidlds both the app pages bundle the API bundle.
-
