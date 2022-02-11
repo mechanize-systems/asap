@@ -16,7 +16,7 @@ Install dependencies:
 
 Run the build:
 
-    make build
+    make check build
 
 Define the following environment variables:
 

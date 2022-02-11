@@ -20,8 +20,8 @@ Therefore there's asap which:
 
 Init a new project:
 
-```
-mkdir example && cd example && npm init
+```sh
+mkdir example && cd example && pnpm init
 ```
 
 Add dependencies to the project:
@@ -74,7 +74,7 @@ Serve the app with API:
 pnpm asap serve
 ```
 
-Now for productionyou'd want to the optimized bundle first:
+Now for production you'd want to the optimized bundle first:
 
 ```
 pnpm asap build --env production
@@ -94,3 +94,4 @@ asap works on top of fastify, esbuild and React:
 - The fastify is used to serve a page skeleton, app pages bundle and handle API
   requests.
 - On changes asap rebuidlds both the app pages bundle the API bundle.
+
