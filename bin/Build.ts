@@ -153,11 +153,12 @@ export function build<E extends EnrtyPoints>(
         splitting: platform === "browser",
         treeShaking: env === "production",
         incremental: true,
-        format: "esm",
+        format: platform === "browser" ? "esm" : "cjs",
         platform,
         external: config.external ?? [],
         minify: env === "production",
         logLevel: "silent",
+        sourcemap: env === "production" ? "external" : "inline",
         define: {
           NODE_NEV: env,
         },
@@ -247,6 +248,9 @@ export function build<E extends EnrtyPoints>(
 
 /**
  * Get a map from entryPoint names to output files.
+ *
+ * This correlates info from esbuild.Metafile to BuildConfig.entryPoints.
+ * TODO: make sure this jjj
  */
 function outputByEntryPoint<E extends EnrtyPoints>(
   entryPoints: E,
@@ -256,9 +260,12 @@ function outputByEntryPoint<E extends EnrtyPoints>(
 ): Output<E> {
   let names: (keyof E)[] = Object.keys(entryPoints);
   let map: Output<E> = {} as any;
-  Object.keys(metafile.outputs).forEach((outputPath, idx) => {
+  let idx = 0;
+  Object.entries(metafile.outputs).forEach(([outputPath, output]) => {
     let name = names[idx];
     if (name == null) return;
+    if (output.entryPoint == null) return;
+    idx = idx + 1;
     outputPath = path.join(projectRoot, outputPath);
     map[name] = {
       outputPath,

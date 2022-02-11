@@ -21,21 +21,21 @@
     "react-dom": "rc",
     "ts-node": "^10.5.0",
     "typescript": "^4.5.5",
-    "typescript-language-server": "^0.9.6"
-  },
-  "dependencies": {
-    "@parcel/codeframe": "^2.3.1",
+    "typescript-language-server": "^0.9.6",
     "chalk": "^4",
     "cmd-ts": "^0.10.0",
     "debug": "^4.3.3",
-    "esbuild": "^0.14.20",
-    "fastify": "^3.27.1",
-    "fastify-static": "^4.5.0",
-    "fb-watchman": "^2.0.1",
+    "@parcel/codeframe": "^2.3.1",
     "memoize-weak": "^1.0.2",
     "regexparam": "^2.0.0",
     "source-map-support": "^0.5.21",
     "tempfile": "^4.0.0",
     "word-wrap": "^1.2.3"
+  },
+  "dependencies": {
+    "esbuild": "^0.14.20",
+    "fastify": "^3.27.1",
+    "fastify-static": "^4.5.0",
+    "fb-watchman": "^2.0.1"
   }
 }

@@ -92,6 +92,7 @@ function createApp(config: AppConfig): App {
     },
     platform: "node",
     env: config.env,
+    external: ["fastify"],
     onBuild: () => info(`api build ready`),
   });
 
@@ -153,7 +154,7 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
     await loadAPI(apiOutput);
   }
 
-  let server = Fastify.fastify({});
+  let server = Fastify.fastify();
 
   server.addHook("preHandler", async (req) => {
     // For /__static/ let's wait till the current build is ready.
@@ -207,7 +208,8 @@ let serveApi =
     }
 
     let api = await loadAPI(output);
-    if (api == null) {
+    if (api instanceof Error) {
+      console.log(api);
       res.statusCode = 500;
       res.send("500 INTERNAL SERVER ERROR");
       return;
@@ -217,7 +219,15 @@ let serveApi =
     for (let route of api.routes) {
       let params = Routing.matches(route, reqPath);
       if (params == null) continue;
-      return route.handle(req, res, params);
+      try {
+        return await route.handle(req, res, params);
+      } catch (err) {
+        // TODO: this is a good place to rewrite stack using source map
+        console.log(err);
+        res.statusCode = 500;
+        res.send("500 INTERNAL SERVER ERROR");
+        return;
+      }
     }
 
     res.statusCode = 404;
@@ -229,25 +239,42 @@ type LoadedAPI = {
 };
 
 let loadAPI = memoize(
-  async (output: Build.Output<{ main: string }>): Promise<LoadedAPI | null> => {
+  async (
+    output: Build.Output<{ main: string }>
+  ): Promise<LoadedAPI | Error> => {
     log("loading api bundle");
 
     let bundlePath = output.main.outputPath;
-    if (bundlePath == null) return null;
+    if (bundlePath == null) return new Error("no api bundle found");
 
     let bundle = await fs.promises.readFile(bundlePath, "utf8");
 
-    let context = vm.createContext({});
-    let mod = new vm.SourceTextModule(bundle, { context });
-    await mod.link((specifier, _referencingModule) => {
-      let msg =
-        `Error while importing "${specifier}" from api bundle: ` +
-        "imports outside of the bundle are not allowed";
-      throw new Error(msg);
-    });
-    await mod.evaluate();
-    let routes = (mod.namespace as { routes: API.Routes }).routes;
-    if (routes == null) return null;
+    let context = {
+      module: { exports: {} as { routes?: API.Routes } },
+      require,
+      Buffer,
+      process,
+      console,
+      setTimeout,
+      setInterval,
+      setImmediate,
+      clearTimeout,
+      clearInterval,
+      clearImmediate,
+    };
+    vm.createContext(context);
+    try {
+      let script = new vm.Script(bundle);
+      script.runInContext(context);
+    } catch (err: any) {
+      // TODO: this is a good place to rewrite stack using source map
+      // Need to re-wrap into host Error object here so instanceof checks work
+      // and etc.
+      return new Error(err);
+    }
+
+    let routes = context.module.exports.routes;
+    if (routes == null) return new Error("api bundle has no routes defined");
     return { routes };
   }
 );
