@@ -98,7 +98,12 @@ async function build(config: AppConfig) {
   let app = createApp(config);
 
   await Promise.all([app.buildApp.start(), app.buildApi.start()]);
+  let [appOk, apiOk] = await Promise.all([
+    app.buildApp.ready(),
+    app.buildApi.ready(),
+  ]);
   await Promise.all([app.buildApp.stop(), app.buildApi.stop()]);
+  return appOk && apiOk;
 }
 
 async function serve(config: AppConfig, serveConfig: ServeConfig) {
@@ -258,8 +263,9 @@ let buildCmd = Cmd.command({
   args: {
     ...appConfigArgs,
   },
-  handler: ({ projectRoot = process.cwd(), env }) => {
-    build({ projectRoot, env });
+  handler: async ({ projectRoot = process.cwd(), env }) => {
+    let ok = await build({ projectRoot, env });
+    if (!ok) process.exit(1);
   },
 });
 
