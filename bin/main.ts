@@ -361,7 +361,7 @@ async function formatBundleErrorStackTrace(
       line: frame.lineNumber!,
       column: frame.columnNumber!,
     });
-    source = path.relative(cwd, path.resolve(bundlePath, source));
+    source = path.relative(cwd, path.resolve(path.dirname(bundlePath), source));
     let item = `    at ${source}:${line}:${column}`;
     if (frame.functionName != null) {
       item = `${item} (${frame.functionName})`;
