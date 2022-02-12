@@ -12,15 +12,27 @@ import { deferred } from "./PromiseUtil";
 import debug from "debug";
 import * as Logging from "./Logging";
 
+/** A collection of named entry points for the build. */
 export type EnrtyPoints = { [name: string]: string };
 
-export type Output<E extends EnrtyPoints> = {
-  [K in keyof E]: { outputPath: string; relativeOutputPath: string };
+/** A collection of outputs corresponding to entry points. */
+export type BuildOutput<E extends EnrtyPoints> = {
+  [K in keyof E]: BuildOutputItem;
+};
+
+export type BuildOutputItem = {
+  js: null | BuildOutputFile;
+  css: null | BuildOutputFile;
+};
+
+export type BuildOutputFile = {
+  path: string;
+  relativePath: string;
 };
 
 export type BuildConfig<E extends EnrtyPoints> = {
   buildId: string;
-  projectRoot: string;
+  projectPath: string;
   entryPoints: E;
   platform?: esbuild.Platform;
   external?: esbuild.BuildOptions["external"];
@@ -39,7 +51,7 @@ export type BuildService<E extends EnrtyPoints> = {
   /** Start the initial build. */
   start: () => Promise<void>;
   /** Promise which resolves when the currently running build has completed. */
-  ready: () => Promise<Output<E> | null>;
+  ready: () => Promise<BuildOutput<E> | null>;
   /** Stop the build process. */
   stop: () => Promise<void>;
 };
@@ -54,7 +66,7 @@ export function build<E extends EnrtyPoints>(
   let env = config.env ?? "production";
 
   let buildPath = path.join(
-    config.projectRoot,
+    config.projectPath,
     "node_modules",
     ".cache",
     "asap",
@@ -72,21 +84,24 @@ export function build<E extends EnrtyPoints>(
     return b;
   };
 
-  let loadOutput = async () => {
-    let metafile = JSON.parse(await fs.promises.readFile(metafilePath, "utf8"));
-    return outputByEntryPoint(
+  let loadOutput = async (): Promise<BuildOutput<E>> => {
+    let metafileData = await fs.promises.readFile(metafilePath, "utf8");
+    let metafile: esbuild.Metafile = JSON.parse(metafileData);
+    return getBuildOutput(
+      config.projectPath,
       config.entryPoints,
       buildPath,
-      config.projectRoot,
-      metafile
+      metafile.outputs
     );
   };
 
   let started = false;
-  let previousOutput: null | Promise<Output<E>> = null;
+  let previousOutput: null | Promise<BuildOutput<E>> = null;
   let initialBuild = deferredWithCatch<esbuild.BuildIncremental>();
-  let current =
-    deferredWithCatch<{ build: esbuild.BuildIncremental; output: Output<E> }>();
+  let current = deferredWithCatch<{
+    build: esbuild.BuildIncremental;
+    output: BuildOutput<E>;
+  }>();
   let currentBuildStart = performance.now();
 
   let onBuild = async (build: esbuild.BuildIncremental) => {
@@ -100,11 +115,11 @@ export function build<E extends EnrtyPoints>(
       );
       await fs.promises.rename(metafileTempPath, metafilePath);
     }
-    let output = outputByEntryPoint(
+    let output: BuildOutput<E> = getBuildOutput(
+      config.projectPath,
       config.entryPoints,
       buildPath,
-      config.projectRoot,
-      build.metafile!
+      build.metafile?.outputs!
     );
     current.resolve({ build, output });
     if (config.onBuild != null) config.onBuild(build);
@@ -118,7 +133,7 @@ export function build<E extends EnrtyPoints>(
         if (e.location != null)
           locs.push({
             message: e.text,
-            path: path.join(config.projectRoot, e.location.file),
+            path: path.join(config.projectPath, e.location.file),
             line: e.location.line,
             column: e.location.column,
           });
@@ -143,7 +158,7 @@ export function build<E extends EnrtyPoints>(
     currentBuildStart = performance.now();
     try {
       build = await esbuild.build({
-        absWorkingDir: config.projectRoot,
+        absWorkingDir: config.projectPath,
         entryPoints: config.entryPoints,
         entryNames: "[dir]/[name]-[hash]",
         outdir: buildPath,
@@ -246,31 +261,36 @@ export function build<E extends EnrtyPoints>(
   };
 }
 
-/**
- * Get a map from entryPoint names to output files.
- *
- * This correlates info from esbuild.Metafile to BuildConfig.entryPoints.
- * TODO: make sure this jjj
- */
-function outputByEntryPoint<E extends EnrtyPoints>(
-  entryPoints: E,
+function getBuildOutput<E extends EnrtyPoints>(
+  projectPath: string,
+  entryPoints: EnrtyPoints,
   buildPath: string,
-  projectRoot: string,
-  metafile: esbuild.Metafile
-): Output<E> {
-  let names: (keyof E)[] = Object.keys(entryPoints);
-  let map: Output<E> = {} as any;
-  let idx = 0;
-  Object.entries(metafile.outputs).forEach(([outputPath, output]) => {
-    let name = names[idx];
-    if (name == null) return;
-    if (output.entryPoint == null) return;
-    idx = idx + 1;
-    outputPath = path.join(projectRoot, outputPath);
-    map[name] = {
-      outputPath,
-      relativeOutputPath: path.relative(buildPath, outputPath),
-    };
+  outputs: esbuild.Metafile["outputs"]
+): BuildOutput<E> {
+  // Pre-init empty buildOutput for entryPoints
+  let buildOutput = {} as BuildOutput<E>;
+  for (let k in entryPoints)
+    buildOutput[k as keyof E] = { js: null, css: null };
+
+  let makeBuildOutputFile = (p: string) => ({
+    path: p,
+    relativePath: path.relative(buildPath, p),
   });
-  return map;
+
+  for (let p in outputs) {
+    p = path.join(projectPath, p);
+    let basename = path.basename(p);
+    let extname = path.extname(p);
+    let match = PARSE_OUTFILE_RE.exec(basename);
+    if (match == null) continue;
+    let [, entryPointName] = match;
+    if (entryPointName == null) continue;
+    let outputItem = buildOutput[entryPointName];
+    if (outputItem == null) continue;
+    if (extname === ".js") outputItem.js = makeBuildOutputFile(p);
+    else if (extname === ".css") outputItem.css = makeBuildOutputFile(p);
+  }
+  return buildOutput;
 }
+
+let PARSE_OUTFILE_RE = /^([a-z0-9A-Z_]+)-[A-Z0-9]+\.(js|css)$/;

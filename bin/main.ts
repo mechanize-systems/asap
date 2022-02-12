@@ -19,7 +19,7 @@ type AppConfig = {
   /**
    * Project root.
    */
-  projectRoot: string;
+  projectPath: string;
 
   /**
    * What env application is running in.
@@ -61,8 +61,8 @@ type ServeConfig = {
 
 type App = {
   config: AppConfig;
-  buildApi: Build.BuildService<{ main: string }>;
-  buildApp: Build.BuildService<{ main: string }>;
+  buildApi: Build.BuildService<{ __main__: string }>;
+  buildApp: Build.BuildService<{ __main__: string }>;
 };
 
 let info = debug("asap:info");
@@ -76,9 +76,9 @@ function fatal(msg: string): never {
 function createApp(config: AppConfig): App {
   let buildApp = Build.build({
     buildId: "app",
-    projectRoot: config.projectRoot,
+    projectPath: config.projectPath,
     entryPoints: {
-      main: path.join(config.projectRoot, "app"),
+      __main__: path.join(config.projectPath, "app"),
     },
     env: config.env,
     onBuild: () => info("app build ready"),
@@ -86,9 +86,9 @@ function createApp(config: AppConfig): App {
 
   let buildApi = Build.build({
     buildId: "api",
-    projectRoot: config.projectRoot,
+    projectPath: config.projectPath,
     entryPoints: {
-      main: path.join(config.projectRoot, "api"),
+      __main__: path.join(config.projectPath, "api"),
     },
     platform: "node",
     env: config.env,
@@ -100,9 +100,9 @@ function createApp(config: AppConfig): App {
 }
 
 async function build(config: AppConfig) {
-  let { projectRoot, env = "development" } = config;
+  let { projectPath, env = "development" } = config;
   info("building project");
-  info("projectRoot: $PWD/%s", path.relative(process.cwd(), projectRoot));
+  info("projectPath: $PWD/%s", path.relative(process.cwd(), projectPath));
   info("env: %s", env);
 
   let app = createApp(config);
@@ -117,21 +117,21 @@ async function build(config: AppConfig) {
 }
 
 async function serve(config: AppConfig, serveConfig: ServeConfig) {
-  let { projectRoot, env = "development" } = config;
+  let { projectPath, env = "development" } = config;
   info("serving project");
-  info("projectRoot: $PWD/%s", path.relative(process.cwd(), projectRoot));
+  info("projectPath: $PWD/%s", path.relative(process.cwd(), projectPath));
   info("env: %s", env);
 
   let app = createApp(config);
 
   if (env === "development") {
     let watch = new Watch.Watch();
-    let clock = await watch.clock(projectRoot);
+    let clock = await watch.clock(projectPath);
 
     await app.buildApp.start();
     await app.buildApi.start();
 
-    await watch.subscribe({ path: projectRoot, since: clock }, () => {
+    await watch.subscribe({ path: projectPath, since: clock }, () => {
       info("changes detected, rebuilding");
       app.buildApp.rebuild();
       app.buildApi.rebuild();
@@ -181,18 +181,20 @@ let serveApp =
   (app: App): Fastify.RouteHandler =>
   async (_req, res) => {
     let outs = await app.buildApp.ready();
-    let bundleName = outs?.main.relativeOutputPath ?? "__buildError.js";
+    let js = outs?.__main__.js?.relativePath ?? "__buildError.js";
+    let css = outs?.__main__.css?.relativePath;
     res.statusCode = 200;
     res.header("Content-Type", "text/html");
     res.send(
       `
-      <!doctype html>
-      <html>
-        <body>
-          <div id="asap"></div>
-          <script type="module" src="/__static/${bundleName}"></script>
-        </body>
-      </html>
+    <!doctype html>
+    <html>
+      <body>
+        <div id="asap"></div>
+        ${css ? `<link rel="stylesheet" href="/__static/${css}" />` : ""}
+        <script type="module" src="/__static/${js}"></script>
+      </body>
+    </html>
       `
     );
   };
@@ -240,11 +242,11 @@ type LoadedAPI = {
 
 let loadAPI = memoize(
   async (
-    output: Build.Output<{ main: string }>
+    output: Build.BuildOutput<{ __main__: string }>
   ): Promise<LoadedAPI | Error> => {
     log("loading api bundle");
 
-    let bundlePath = output.main.outputPath;
+    let bundlePath = output.__main__.js?.path;
     if (bundlePath == null) return new Error("no api bundle found");
 
     let bundle = await fs.promises.readFile(bundlePath, "utf8");
@@ -288,9 +290,9 @@ if (!("DEBUG" in process.env)) {
 }
 
 let appConfigArgs = {
-  projectRoot: Cmd.positional({
+  projectPath: Cmd.positional({
     type: Cmd.optional(CmdFs.Directory),
-    displayName: "PROJECT_ROOT",
+    displayName: "PROJECT_PATH",
   }),
   env: Cmd.option({
     short: "E",
@@ -322,8 +324,8 @@ let serveCmd = Cmd.command({
       type: Cmd.string,
     }),
   },
-  handler: ({ projectRoot = process.cwd(), env, port, iface }) => {
-    serve({ projectRoot, env }, { port, iface });
+  handler: ({ projectPath = process.cwd(), env, port, iface }) => {
+    serve({ projectPath, env }, { port, iface });
   },
 });
 
@@ -333,8 +335,8 @@ let buildCmd = Cmd.command({
   args: {
     ...appConfigArgs,
   },
-  handler: async ({ projectRoot = process.cwd(), env }) => {
-    let ok = await build({ projectRoot, env });
+  handler: async ({ projectPath = process.cwd(), env }) => {
+    let ok = await build({ projectPath, env });
     if (!ok) process.exit(1);
   },
 });

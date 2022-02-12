@@ -1,3 +1,4 @@
+import "./index.css";
 import * as ASAP from "@mechanize/asap";
 
 export let routes = {
