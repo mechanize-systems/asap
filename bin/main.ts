@@ -1,4 +1,7 @@
 import "source-map-support/register";
+import * as SourceMap from "source-map";
+import * as ConvertSourceMap from "convert-source-map";
+import * as ErrorStackParser from "error-stack-parser";
 import * as path from "path";
 import * as vm from "vm";
 import * as fs from "fs";
@@ -238,8 +241,10 @@ let serveApi =
     }
 
     let api = await loadAPI(output);
-    if (api instanceof Error) {
-      console.log(api);
+    if (api instanceof Error || api == null) {
+      if (api instanceof Error) {
+        console.log(api);
+      }
       res.statusCode = 500;
       res.send("500 INTERNAL SERVER ERROR");
       return;
@@ -249,15 +254,7 @@ let serveApi =
     for (let route of api.routes) {
       let params = Routing.matches(route, reqPath);
       if (params == null) continue;
-      try {
-        return await route.handle(req, res, params);
-      } catch (err) {
-        // TODO: this is a good place to rewrite stack using source map
-        console.log(err);
-        res.statusCode = 500;
-        res.send("500 INTERNAL SERVER ERROR");
-        return;
-      }
+      return await api.runRoute(route, req, res, params);
     }
 
     res.statusCode = 404;
@@ -266,15 +263,21 @@ let serveApi =
 
 type LoadedAPI = {
   routes: API.Routes;
+  runRoute: <P extends string>(
+    route: API.Route<P>,
+    req: API.Request,
+    res: API.Response,
+    params: API.RouteParams<P>
+  ) => Promise<unknown>;
 };
 
 let loadAPI = memoize(
   async (
     output: Build.BuildOutput<{ __main__: string }>
-  ): Promise<LoadedAPI | Error> => {
+  ): Promise<LoadedAPI | Error | null> => {
     log("loading api bundle");
 
-    let bundlePath = output.__main__.js?.path;
+    const bundlePath = output.__main__.js?.path;
     if (bundlePath == null) return new Error("no api bundle found");
 
     let bundle = await fs.promises.readFile(bundlePath, "utf8");
@@ -294,20 +297,68 @@ let loadAPI = memoize(
     };
     vm.createContext(context);
     try {
-      let script = new vm.Script(bundle);
+      let script = new vm.Script(bundle, { filename: "asap://api" });
       script.runInContext(context);
     } catch (err: any) {
-      // TODO: this is a good place to rewrite stack using source map
-      // Need to re-wrap into host Error object here so instanceof checks work
-      // and etc.
-      return new Error(err);
+      Logging.error("while loading API code");
+      console.log(
+        formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
+      );
+      return null;
     }
+
+    let runRoute = async <P extends string>(
+      route: API.Route<P>,
+      req: API.Request,
+      res: API.Response,
+      params: API.RouteParams<P>
+    ) => {
+      try {
+        return await route.handle(req, res, params);
+      } catch (err) {
+        res.statusCode = 500;
+        res.send("500 INTERNAL SERVER ERROR");
+        Logging.error("while serving API request");
+        console.log(
+          formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
+        );
+      }
+    };
 
     let routes = context.module.exports.routes;
     if (routes == null) return new Error("api bundle has no routes defined");
-    return { routes };
+    return { routes, runRoute };
   }
 );
+
+function formatBundleErrorStackTrace(
+  bundlePath: string,
+  bundle: string,
+  error: Error
+) {
+  let conv = ConvertSourceMap.fromSource(bundle);
+  let rawSourceMap = conv?.toObject() as SourceMap.RawSourceMap | null;
+  if (rawSourceMap == null) return null;
+  let consumer = new SourceMap.SourceMapConsumer(rawSourceMap);
+  let stack = ErrorStackParser.parse(error);
+  let items: string[] = [`  Error: ${error.message}`];
+  let cwd = process.cwd();
+  for (let frame of stack) {
+    if (frame.fileName !== "asap://api") continue;
+    if (frame.lineNumber == null || frame.columnNumber == null) continue;
+    let { line, column, source } = consumer.originalPositionFor({
+      line: frame.lineNumber!,
+      column: frame.columnNumber!,
+    });
+    source = path.relative(cwd, path.resolve(bundlePath, source));
+    let item = `    at ${source}:${line}:${column}`;
+    if (frame.functionName != null) {
+      item = `${item} (${frame.functionName})`;
+    }
+    items.push(item);
+  }
+  return items.join("\n");
+}
 
 /**
  * Command Line Interface.
