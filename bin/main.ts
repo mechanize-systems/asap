@@ -302,7 +302,7 @@ let loadAPI = memoize(
     } catch (err: any) {
       Logging.error("while loading API code");
       console.log(
-        formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
+        await formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
       );
       return null;
     }
@@ -320,7 +320,7 @@ let loadAPI = memoize(
         res.send("500 INTERNAL SERVER ERROR");
         Logging.error("while serving API request");
         console.log(
-          formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
+          await formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
         );
       }
     };
@@ -331,15 +331,26 @@ let loadAPI = memoize(
   }
 );
 
-function formatBundleErrorStackTrace(
+async function extractSourceMap(bundlePath: string, bundle: string) {
+  let conv = ConvertSourceMap.fromSource(bundle);
+  let rawSourceMap = conv?.toObject() as SourceMap.RawSourceMap | null;
+  if (rawSourceMap != null) return rawSourceMap;
+  try {
+    let data = await fs.promises.readFile(bundlePath + ".map", "utf8");
+    return JSON.parse(data) as SourceMap.RawSourceMap;
+  } catch {
+    return null;
+  }
+}
+
+async function formatBundleErrorStackTrace(
   bundlePath: string,
   bundle: string,
   error: Error
-) {
-  let conv = ConvertSourceMap.fromSource(bundle);
-  let rawSourceMap = conv?.toObject() as SourceMap.RawSourceMap | null;
-  if (rawSourceMap == null) return null;
-  let consumer = new SourceMap.SourceMapConsumer(rawSourceMap);
+): Promise<string> {
+  let sourceMap = await extractSourceMap(bundlePath, bundle);
+  if (sourceMap == null) return "  " + String(error.stack);
+  let consumer = new SourceMap.SourceMapConsumer(sourceMap);
   let stack = ErrorStackParser.parse(error);
   let items: string[] = [`  Error: ${error.message}`];
   let cwd = process.cwd();
