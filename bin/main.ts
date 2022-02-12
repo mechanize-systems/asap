@@ -169,7 +169,13 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
       fatal("api bundle was not built");
     }
     // Preload API bundle at the startup so we fail early.
-    await loadAPI(apiOutput);
+    try {
+      let api = await loadAPI(apiOutput);
+      if (api == null) throw new Error("no api");
+      if (api instanceof Error) throw api;
+    } catch {
+      fatal("could not initialize api bundle");
+    }
   }
 
   let server = Fastify.fastify();
