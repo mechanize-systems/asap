@@ -8,7 +8,7 @@ build: main.js $(LIB) $(DTS)
 
 .PHONY: check
 check:
-	@tsc -b .
+	@pnpm tsc -b .
 
 .PHONY: clean
 clean:
@@ -16,7 +16,7 @@ clean:
 
 main.js: $(wildcard bin/*) pnpm-lock.yaml
 	@mkdir -p $(@D)
-	@esbuild \
+	@pnpm esbuild \
 		--bundle \
 		--sourcemap=inline \
 		--platform=node \
@@ -30,14 +30,14 @@ main.js: $(wildcard bin/*) pnpm-lock.yaml
 
 lib/%.js: src/%.ts
 	@mkdir -p $(@D)
-	@esbuild \
+	@pnpm esbuild \
 		--platform=browser \
 		--log-level=error \
 		--outfile=$@ $<
 
 lib/%.js: src/%.tsx
 	@mkdir -p $(@D)
-	@esbuild \
+	@pnpm esbuild \
 		--platform=browser \
 		--log-level=error \
 		--outfile=$@ $<
