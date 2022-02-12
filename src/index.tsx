@@ -8,6 +8,8 @@ import * as Routing from "./Routing";
 export let route = Router.route;
 export let href = Routing.href;
 
+declare var ASAPConfig: { basePath: string };
+
 /** Boot application with routes. */
 export function boot(routes: Router.Routes) {
   window.addEventListener("DOMContentLoaded", async () => {
@@ -48,7 +50,14 @@ export let Link = React.forwardRef(
       },
       [href]
     );
-    return <a {...props} ref={ref} href={href} onClick={onClick} />;
+    return (
+      <a
+        {...props}
+        ref={ref}
+        href={ASAPConfig.basePath + href}
+        onClick={onClick}
+      />
+    );
   }
 );
 
@@ -57,7 +66,9 @@ type AppProps = {
 };
 
 function App({ routes }: AppProps) {
-  let [_updatingPath, path, router] = Router.useLocation();
+  let [_updatingPath, path, router] = Router.useLocation({
+    basePath: ASAPConfig.basePath,
+  });
   let [route, params] = React.useMemo(
     () => match(routes, path),
     [routes, path]

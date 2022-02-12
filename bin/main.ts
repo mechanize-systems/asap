@@ -2,6 +2,7 @@ import "source-map-support/register";
 import * as path from "path";
 import * as vm from "vm";
 import * as fs from "fs";
+import jsesc from "jsesc";
 import * as Fastify from "fastify";
 import FastifyStatic from "fastify-static";
 import debug from "debug";
@@ -61,6 +62,7 @@ type ServeConfig = {
 
 type App = {
   config: AppConfig;
+  basePath: string;
   buildApi: Build.BuildService<{ __main__: string }>;
   buildApp: Build.BuildService<{ __main__: string }>;
 };
@@ -74,6 +76,18 @@ function fatal(msg: string): never {
 }
 
 function createApp(config: AppConfig): App {
+  let basePath = config.basePath ?? "";
+
+  // Normalize basePath
+  if (basePath != "") {
+    if (basePath.endsWith("/")) {
+      basePath = basePath.slice(0, basePath.length - 1);
+    }
+    if (!basePath.startsWith("/")) {
+      basePath = "/" + basePath;
+    }
+  }
+
   let buildApp = Build.build({
     buildId: "app",
     projectPath: config.projectPath,
@@ -96,7 +110,7 @@ function createApp(config: AppConfig): App {
     onBuild: () => info(`api build ready`),
   });
 
-  return { buildApi, buildApp, config };
+  return { buildApi, buildApp, config, basePath };
 }
 
 async function build(config: AppConfig) {
@@ -118,11 +132,12 @@ async function build(config: AppConfig) {
 
 async function serve(config: AppConfig, serveConfig: ServeConfig) {
   let { projectPath, env = "development" } = config;
+  let app = createApp(config);
+
   info("serving project");
   info("projectPath: $PWD/%s", path.relative(process.cwd(), projectPath));
   info("env: %s", env);
-
-  let app = createApp(config);
+  info("basePath: %s", app.basePath);
 
   if (env === "development") {
     let watch = new Watch.Watch();
@@ -164,12 +179,12 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
   });
 
   server.register(FastifyStatic, {
-    prefix: "/__static",
+    prefix: `${app.basePath}/__static`,
     root: app.buildApp.buildPath,
   });
 
-  server.get("/_api*", serveApi(app));
-  server.get("/*", serveApp(app));
+  server.get(`${app.basePath}/_api*`, serveApi(app));
+  server.get(`${app.basePath}/*`, serveApp(app));
 
   let { iface = "10.0.88.2", port = 3001 } = serveConfig;
   server.listen(port, iface, () => {
@@ -183,6 +198,12 @@ let serveApp =
     let outs = await app.buildApp.ready();
     let js = outs?.__main__.js?.relativePath ?? "__buildError.js";
     let css = outs?.__main__.css?.relativePath;
+    let config = jsesc(
+      {
+        basePath: app.basePath,
+      },
+      { json: true, isScriptContext: true }
+    );
     res.statusCode = 200;
     res.header("Content-Type", "text/html");
     res.send(
@@ -191,8 +212,15 @@ let serveApp =
     <html>
       <body>
         <div id="asap"></div>
-        ${css ? `<link rel="stylesheet" href="/__static/${css}" />` : ""}
-        <script type="module" src="/__static/${js}"></script>
+        ${
+          css
+            ? `<link rel="stylesheet" href="${app.basePath}/__static/${css}" />`
+            : ""
+        }
+        <script>
+          window.ASAPConfig = ${config};
+        </script>
+        <script type="module" src="${app.basePath}/__static/${js}"></script>
       </body>
     </html>
       `
@@ -294,6 +322,13 @@ let appConfigArgs = {
     type: Cmd.optional(CmdFs.Directory),
     displayName: "PROJECT_PATH",
   }),
+  basePath: Cmd.option({
+    long: "base-path",
+    description: "Base path application is running at",
+    env: "ASAP__BASEPATH",
+    defaultValue: () => "" as AppEnv,
+    type: Cmd.string,
+  }),
   env: Cmd.option({
     short: "E",
     long: "env",
@@ -324,8 +359,8 @@ let serveCmd = Cmd.command({
       type: Cmd.string,
     }),
   },
-  handler: ({ projectPath = process.cwd(), env, port, iface }) => {
-    serve({ projectPath, env }, { port, iface });
+  handler: ({ projectPath = process.cwd(), basePath, env, port, iface }) => {
+    serve({ projectPath, basePath, env }, { port, iface });
   },
 });
 

@@ -4,6 +4,7 @@ specifiers:
   '@parcel/codeframe': ^2.3.1
   '@types/debug': ^4.1.7
   '@types/fb-watchman': ^2.0.1
+  '@types/jsesc': ^3.0.1
   '@types/node': ^17.0.16
   '@types/react': ^17.0.39
   '@types/react-dom': ^17.0.11
@@ -16,6 +17,7 @@ specifiers:
   fastify: ^3.27.1
   fastify-static: ^4.5.0
   fb-watchman: ^2.0.1
+  jsesc: ^3.0.2
   memoize-weak: ^1.0.2
   prettier: ^2.5.1
   react: rc
@@ -29,10 +31,12 @@ specifiers:
   word-wrap: ^1.2.3
 
 dependencies:
+  '@types/jsesc': 3.0.1
   esbuild: 0.14.20
   fastify: 3.27.1
   fastify-static: 4.5.0
   fb-watchman: 2.0.1
+  jsesc: 3.0.2
 
 devDependencies:
   '@parcel/codeframe': 2.3.1
@@ -163,6 +167,10 @@ packages:
   /@types/fb-watchman/2.0.1:
     resolution: {integrity: sha512-iJ7/e6drSmuCzAp96/dpksm8YjxbhhyXWV6m1HPbRHvZwUOUZ5vZvZIAUJxKDtI0UpdNfDvLPiai0MTJmmS+HA==}
     dev: true
+
+  /@types/jsesc/3.0.1:
+    resolution: {integrity: sha512-F2g93pJlhV0RlW9uSUAM/hIxywlwlZcuRB/nZ82GaMPaO8mdexYbJ8Qt3UGbUS1M19YFQykEetrWW004M+vPCg==}
+    dev: false
 
   /@types/ms/0.7.31:
     resolution: {integrity: sha512-iiUgKzV9AuaEkZqkOLDIvlQiL6ltuZd9tGcW3gwpnX8JbuiuhFlEGmmFXEXkN50Cvq7Os88IY2v0dkDqXYWVgA==}
@@ -1119,6 +1127,12 @@ packages:
     dependencies:
       argparse: 2.0.1
     dev: true
+
+  /jsesc/3.0.2:
+    resolution: {integrity: sha512-xKqzzWXDttJuOcawBt4KnKHHIf5oQ/Cxax+0PWFG+DFDgHNAdi+TXECADI+RYiFUMmx8792xsMbbgXj4CwnP4g==}
+    engines: {node: '>=6'}
+    hasBin: true
+    dev: false
 
   /json-schema-traverse/0.4.1:
     resolution: {integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==}

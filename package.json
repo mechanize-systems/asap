@@ -34,9 +34,11 @@
     "word-wrap": "^1.2.3"
   },
   "dependencies": {
+    "@types/jsesc": "^3.0.1",
     "esbuild": "^0.14.20",
     "fastify": "^3.27.1",
     "fastify-static": "^4.5.0",
-    "fb-watchman": "^2.0.1"
+    "fb-watchman": "^2.0.1",
+    "jsesc": "^3.0.2"
   }
 }
