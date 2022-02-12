@@ -1,3 +1,18 @@
 body {
-  color: red;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+}
+
+.LoadingIndicator {
+  animation: 0s linear 0.1s forwards LoadingIndicator__appear;
+  visibility: hidden;
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+@keyframes LoadingIndicator__appear {
+  to {
+    visibility: visible;
+  }
 }

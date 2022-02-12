@@ -5,21 +5,58 @@ import * as React from "react";
 import * as Router from "./Router";
 import * as Routing from "./Routing";
 
+// This is what's being injected by the server.
+declare var ASAPConfig: { basePath: string };
+
 export let route = Router.route;
 export let href = Routing.href;
 
-declare var ASAPConfig: { basePath: string };
+export type AppConfig = {
+  /**
+   * A set of routes for the application.
+   *
+   * See @see route function on how to define routes.
+   */
+  routes: Router.Routes;
+
+  /**
+   * A component which renders application chrome (the UI around page
+   * components).
+   */
+  AppChrome?: React.ComponentType<AppChromeProps>;
+
+  /**
+   * A component which renders a loading screen (while application page is being
+   * loaded).
+   */
+  AppLoading?: React.ComponentType<AppLoadingProps>;
+
+  /**
+   * A component which renders when no page route matches the current pathname.
+   */
+  AppOnPageNotFound?: React.ComponentType<AppOnPageNotFoundProps>;
+};
+
+export type AppChromeProps = {
+  isNavigating: boolean;
+  children: React.ReactNode;
+};
+
+export type AppLoadingProps = {};
+
+export type AppOnPageNotFoundProps = {};
 
 /** Boot application with routes. */
-export function boot(routes: Router.Routes) {
+export function boot(config: AppConfig) {
   window.addEventListener("DOMContentLoaded", async () => {
     // TODO: error handling
     let element = document.getElementById("asap");
     let root = ReactDOM.createRoot(element!);
+    let AppLoading = config.AppLoading ?? AppLoadingDefault;
     root.render(
       <React.StrictMode>
-        <React.Suspense fallback={<div>Loading...</div>}>
-          <App routes={routes} />
+        <React.Suspense fallback={<AppLoading />}>
+          <App config={config} />
         </React.Suspense>
       </React.StrictMode>
     );
@@ -62,22 +99,32 @@ export let Link = React.forwardRef(
 );
 
 type AppProps = {
-  routes: Router.Routes;
+  config: AppConfig;
 };
 
-function App({ routes }: AppProps) {
-  let [_updatingPath, path, router] = Router.useLocation({
+function App({ config }: AppProps) {
+  let [isNavigating, path, router] = Router.useLocation({
     basePath: ASAPConfig.basePath,
   });
   let [route, params] = React.useMemo(
-    () => match(routes, path),
-    [routes, path]
+    () => match(config.routes, path),
+    [config.routes, path]
   );
-  if (route == null || params == null) return <div>404 NOT FOUND</div>;
+  if (route == null || params == null) {
+    let AppOnPageNotFound =
+      config.AppOnPageNotFound ?? AppOnPageNotFoundDefault;
+    return <AppOnPageNotFound />;
+  }
+  let children = <route.Page key={route.path} {...params} />;
+  if (config.AppChrome != null) {
+    children = (
+      <config.AppChrome isNavigating={isNavigating}>
+        {children}
+      </config.AppChrome>
+    );
+  }
   return (
-    <Router.ContextProvider value={router}>
-      <route.Page {...params} />
-    </Router.ContextProvider>
+    <Router.ContextProvider value={router}>{children}</Router.ContextProvider>
   );
 }
 
@@ -91,4 +138,42 @@ function match<T extends string>(
     return [route, params] as any;
   }
   return [null, null];
+}
+
+function AppLoadingDefault(_props: AppLoadingProps) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      Loading...
+    </div>
+  );
+}
+
+function AppOnPageNotFoundDefault(_props: AppOnPageNotFoundProps) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      404 PAGE NOT FOUND...
+    </div>
+  );
 }
