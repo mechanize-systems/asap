@@ -35,7 +35,7 @@ export type BuildConfig<E extends EnrtyPoints> = {
   projectPath: string;
   entryPoints: E;
   platform?: esbuild.Platform;
-  external?: esbuild.BuildOptions["external"];
+  external?: string[] | ((specifier: string) => boolean) | undefined;
   onBuild?: (b: esbuild.BuildIncremental) => void;
   env?: "development" | "production";
 };
@@ -150,6 +150,21 @@ export function build<E extends EnrtyPoints>(
     current.reject(err);
   };
 
+  let plugins: esbuild.Plugin[] = [];
+  if (typeof config.external === "function") {
+    plugins.push({
+      name: "external",
+      setup(build) {
+        build.onResolve({ filter: /^[^\.]/ }, (args) => {
+          if (typeof config.external !== "function") return;
+          if (args.kind === "entry-point") return;
+          if (!config.external(args.path)) return;
+          return { path: args.path, external: true };
+        });
+      },
+    });
+  }
+
   let start = async () => {
     log(`start()`);
     let build: null | esbuild.BuildIncremental = null;
@@ -158,6 +173,7 @@ export function build<E extends EnrtyPoints>(
     currentBuildStart = performance.now();
     try {
       build = await esbuild.build({
+        plugins: plugins,
         absWorkingDir: config.projectPath,
         entryPoints: config.entryPoints,
         entryNames: "[dir]/[name]-[hash]",
@@ -170,7 +186,10 @@ export function build<E extends EnrtyPoints>(
         incremental: true,
         format: platform === "browser" ? "esm" : "cjs",
         platform,
-        external: config.external ?? [],
+        external:
+          config.external && Array.isArray(config.external)
+            ? config.external
+            : [],
         minify: env === "production",
         logLevel: "silent",
         sourcemap: env === "production" ? "external" : "inline",

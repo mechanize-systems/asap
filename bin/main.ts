@@ -18,6 +18,8 @@ import * as Logging from "./Logging";
 import * as Watch from "./Watch";
 import * as Routing from "../src/Routing";
 import type * as API from "../src/api";
+import findWorkspaceDir from "@pnpm/find-workspace-dir";
+import findWorkspacePackages from "@pnpm/find-workspace-packages";
 
 type AppConfig = {
   /**
@@ -78,7 +80,7 @@ function fatal(msg: string): never {
   process.exit(1);
 }
 
-function createApp(config: AppConfig): App {
+async function createApp(config: AppConfig): Promise<App> {
   let basePath = config.basePath ?? "";
 
   // Normalize basePath
@@ -101,6 +103,24 @@ function createApp(config: AppConfig): App {
     onBuild: () => info("app build ready"),
   });
 
+  let external = undefined;
+  let workspaceDir = await findWorkspaceDir(config.projectPath);
+  if (workspaceDir != null) {
+    log("workspace", path.relative(process.cwd(), workspaceDir));
+    let workspacePackages = await findWorkspacePackages(workspaceDir);
+    external = (specifier: string) => {
+      for (let p of workspacePackages) {
+        if (
+          p.manifest.name != null &&
+          (specifier === p.manifest.name ||
+            specifier.startsWith(p.manifest.name + "/"))
+        )
+          return false;
+      }
+      return true;
+    };
+  }
+
   let buildApi = Build.build({
     buildId: "api",
     projectPath: config.projectPath,
@@ -109,7 +129,7 @@ function createApp(config: AppConfig): App {
     },
     platform: "node",
     env: config.env,
-    external: ["fastify"],
+    external,
     onBuild: () => info(`api build ready`),
   });
 
@@ -122,7 +142,7 @@ async function build(config: AppConfig) {
   info("projectPath: $PWD/%s", path.relative(process.cwd(), projectPath));
   info("env: %s", env);
 
-  let app = createApp(config);
+  let app = await createApp(config);
 
   await Promise.all([app.buildApp.start(), app.buildApi.start()]);
   let [appOk, apiOk] = await Promise.all([
@@ -135,7 +155,7 @@ async function build(config: AppConfig) {
 
 async function serve(config: AppConfig, serveConfig: ServeConfig) {
   let { projectPath, env = "development" } = config;
-  let app = createApp(config);
+  let app = await createApp(config);
 
   info("serving project");
   info("projectPath: $PWD/%s", path.relative(process.cwd(), projectPath));
@@ -290,6 +310,7 @@ let loadAPI = memoize(
 
     let context = {
       module: { exports: {} as { routes?: API.Routes } },
+      global,
       require,
       Buffer,
       process,
@@ -367,6 +388,7 @@ async function formatBundleErrorStackTrace(
       line: frame.lineNumber!,
       column: frame.columnNumber!,
     });
+    if (line == null || column == null || source == null) continue;
     source = path.relative(cwd, path.resolve(path.dirname(bundlePath), source));
     let item = `    at ${source}:${line}:${column}`;
     if (frame.functionName != null) {
