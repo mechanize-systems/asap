@@ -1,5 +1,6 @@
 import "source-map-support/register";
 
+import module from "module";
 import * as SourceMap from "source-map";
 import * as ConvertSourceMap from "convert-source-map";
 import * as ErrorStackParser from "error-stack-parser";
@@ -332,10 +333,16 @@ let loadAPI = memoize(
 
     let bundle = await fs.promises.readFile(bundlePath, "utf8");
 
+    let apiModule = { exports: {} as { routes?: API.Routes } };
+
+    let apiRequire = module.createRequire(
+      path.join(app.config.projectPath, "api")
+    );
+
     let context = {
       ASAPConfig: { basePath: app.basePath },
-      module: { exports: {} as { routes?: API.Routes } },
-      require,
+      module: apiModule,
+      require: apiRequire,
       Buffer,
       process,
       console,
@@ -472,7 +479,7 @@ let serveCmd = Cmd.command({
       long: "x-forwarded-user",
       description: "Set X-Forwarded-User HTTP header",
       env: "ASAP__X_FORWARDED_USER",
-      type: Cmd.string,
+      type: Cmd.optional(Cmd.string),
     }),
     port: Cmd.option({
       long: "port",

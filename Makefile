@@ -4,7 +4,7 @@ LIB = $(LIB0:src/%.tsx=lib/%.js)
 DTS = $(LIB:%.js=%.d.ts)
 
 .PHONY: build
-build: main.js $(LIB) $(DTS)
+build: api.js main.js $(LIB) $(DTS)
 
 .PHONY: check
 check:
@@ -25,6 +25,15 @@ main.js: $(wildcard bin/*) pnpm-lock.yaml
 		--log-level=error \
 		--outfile=$@ ./bin/main.ts
 	@chmod +x $@
+
+api.js: $(wildcard src/*)
+	@mkdir -p $(@D)
+	@pnpm esbuild \
+		--bundle \
+		--sourcemap=inline \
+		--platform=node \
+		--log-level=error \
+		--outfile=$@ src/api.ts
 
 lib/%.js: src/%.ts
 	@mkdir -p $(@D)
