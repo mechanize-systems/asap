@@ -218,16 +218,41 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
     }
     next();
   });
+  server.use(async (req, res, next) => {
+    function assertT<T>(v: T | null | Error): asserts v is T {
+      if (v == null || v instanceof Error) {
+        if (app.config.env === "production") {
+          if (v instanceof Error) console.log(v);
+          res.sendStatus(500);
+        } else next();
+      }
+    }
+
+    let output = await app.buildApi.ready();
+    assertT(output);
+    let api = await loadAPI(app, output);
+    assertT(api);
+
+    if (api.exports.onRequest != null) {
+      api.handle(
+        api.exports.onRequest,
+        undefined,
+        req as any as API.Request,
+        res,
+        next
+      );
+    } else {
+      next();
+    }
+  });
   server.use(`/_api`, apiServer);
   server.use(`/__static`, staticServer);
   server.get(`*`, (req, res) => serveApp(app, req, res));
 
   let rootServer = new tinyhttp.App({ settings: { xPoweredBy: false } });
-  if (app.basePath !== "") {
-    rootServer.use(app.basePath, server);
-  } else {
-    rootServer.use(server);
-  }
+
+  rootServer.use(app.basePath, server);
+
   rootServer.listen(
     serveConfig.port,
     () =>
@@ -299,23 +324,27 @@ let serveApi = async (
     return;
   }
 
-  for (let route of api.routes) {
-    if (route.method !== req.method) continue;
-    let params = Routing.matches(route, url.pathname);
-    if (params == null) continue;
-    return await api.runRoute(route, params, req, res, next);
-  }
+  if (api.exports.routes != null)
+    for (let route of api.exports.routes) {
+      if (route.method !== req.method) continue;
+      let params = Routing.matches(route, url.pathname);
+      if (params == null) continue;
+      return await api.handle(route.handle, params, req, res, next);
+    }
 
   res.statusCode = 404;
   res.end("404 NOT FOUND");
 };
 
 type LoadedAPI = {
-  routes: API.Routes;
-  runRoute: <P extends string>(
-    route: API.Route<P>,
-    params: API.RouteParams<P>,
-    req: API.Request,
+  exports: {
+    routes?: API.Routes;
+    onRequest?: API.Handle<void>;
+  };
+  handle: <P>(
+    handler: API.Handle<P>,
+    params: P,
+    req: API.Request<P>,
     res: API.Response,
     next: API.Next
   ) => Promise<unknown>;
@@ -333,7 +362,9 @@ let loadAPI = memoize(
 
     let bundle = await fs.promises.readFile(bundlePath, "utf8");
 
-    let apiModule = { exports: {} as { routes?: API.Routes } };
+    let apiModule: { exports: LoadedAPI["exports"] } = {
+      exports: {},
+    };
 
     let apiRequire = module.createRequire(
       path.join(app.config.projectPath, "api")
@@ -365,10 +396,10 @@ let loadAPI = memoize(
       return null;
     }
 
-    let runRoute = async <P extends string>(
-      route: API.Route<P>,
-      params: API.RouteParams<P>,
-      req: API.Request,
+    let handle = async <P>(
+      handler: API.Handle<P>,
+      params: P,
+      req: API.Request<P>,
       res: API.Response,
       next: API.Next
     ) => {
@@ -384,7 +415,7 @@ let loadAPI = memoize(
       try {
         // TODO: seems fishy...
         req.params = params;
-        return await route.handle(req, res, async (err) => {
+        return await handler(req as API.Request<P>, res, async (err) => {
           if (err == null) return next(err);
           handleError(err);
         });
@@ -393,9 +424,7 @@ let loadAPI = memoize(
       }
     };
 
-    let routes = context.module.exports.routes;
-    if (routes == null) return new Error("api bundle has no routes defined");
-    return { routes, runRoute };
+    return { exports: context.module.exports, handle };
   }
 );
 

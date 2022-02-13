@@ -1,7 +1,11 @@
+/**
+ * Utilities to define API part of ASAP apps.
+ */
+
 import type * as http from "http";
 import * as Routing from "./Routing";
 
-export type Request<Params = {}> = http.IncomingMessage & {
+export type Request<Params = void> = http.IncomingMessage & {
   params: Params;
 };
 export type Response = http.ServerResponse;
@@ -11,12 +15,12 @@ export type RouteParams<P extends string> = Routing.RouteParams<P>;
 
 export type Route<P extends string = string> = Routing.Route<P> & {
   method: HTTPMethod;
-  handle: Handler<Routing.RouteParams<P>>;
+  handle: Handle<Routing.RouteParams<P>>;
 };
 
 export type Routes = Route[];
 
-type Handler<Params> = (
+export type Handle<Params> = (
   req: Request<Params>,
   res: Response,
   next: Next
@@ -25,7 +29,7 @@ type Handler<Params> = (
 export function route<P extends string>(
   method: HTTPMethod,
   path: P,
-  handle: Handler<Routing.RouteParams<P>>
+  handle: Handle<Routing.RouteParams<P>>
 ): Route<P> {
   let route = Routing.route(path);
   return { ...route, method, handle };
