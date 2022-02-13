@@ -81,7 +81,7 @@ export class Watch {
           ["match", "*.tsx"],
           ["match", "*.css"],
         ],
-        ["not", ["match", "node_modules/.cache/**", "wholename"]],
+        ["not", ["match", "**/node_modules/.cache/**", "wholename"]],
       ],
       fields: ["name", "size", "mtime_ms", "exists", "type"],
       since: spec.since,
@@ -96,8 +96,9 @@ export class Watch {
       }
     );
     this._client.on("subscription", (resp) => {
-      log("changes detected");
       if (resp.subscription !== spec.path) return;
+      let files = resp.files.map((file: any) => file.name);
+      log("changes detected", files);
       onChange(resp);
     });
     return def.promise.then(() => () => {
