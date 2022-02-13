@@ -2,12 +2,13 @@ SRC = $(wildcard src/*.ts) $(wildcard src/*.tsx)
 LIB0 = $(SRC:src/%.ts=lib/%.js)
 LIB = $(LIB0:src/%.tsx=lib/%.js)
 DTS = $(LIB:%.js=%.d.ts)
+DTS0 = $(DTS:lib/%=node_modules/.cache/tsbuild/src/%)
 
 .PHONY: build
 build: api.js main.js $(LIB) $(DTS)
 
 .PHONY: check
-check $(DTS):
+check $(DTS0):
 	@pnpm tsc -b .
 
 .PHONY: clean
