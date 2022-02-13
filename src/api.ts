@@ -1,9 +1,12 @@
-import type * as Fastify from "fastify";
+import type * as http from "http";
 import * as Routing from "./Routing";
 
-export type Request = Parameters<Fastify.RouteHandler>[0];
-export type Response = Parameters<Fastify.RouteHandler>[1];
-export type HTTPMethod = Fastify.HTTPMethods;
+export type Request<Params = {}> = http.IncomingMessage & {
+  params: Params;
+};
+export type Response = http.ServerResponse;
+export type Next = (err?: any) => void;
+export type HTTPMethod = "GET" | "POST";
 export type RouteParams<P extends string> = Routing.RouteParams<P>;
 
 export type Route<P extends string = string> = Routing.Route<P> & {
@@ -14,9 +17,9 @@ export type Route<P extends string = string> = Routing.Route<P> & {
 export type Routes = Route[];
 
 type Handler<Params> = (
-  req: Request,
+  req: Request<Params>,
   res: Response,
-  params: Params
+  next: Next
 ) => unknown | Promise<unknown>;
 
 export function route<P extends string>(

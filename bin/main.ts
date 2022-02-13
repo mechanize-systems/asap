@@ -1,25 +1,25 @@
 import "source-map-support/register";
+
 import * as SourceMap from "source-map";
 import * as ConvertSourceMap from "convert-source-map";
 import * as ErrorStackParser from "error-stack-parser";
 import * as path from "path";
+import * as tinyhttp from "@tinyhttp/app";
 import * as vm from "vm";
 import * as fs from "fs";
 import jsesc from "jsesc";
-import * as Fastify from "fastify";
-import FastifyStatic from "fastify-static";
 import debug from "debug";
 import * as Cmd from "cmd-ts";
 import * as CmdFs from "cmd-ts/batteries/fs";
 import memoize from "memoize-weak";
+import sirv from "sirv";
 
 import * as Build from "./Build";
+import * as Workspace from "./Workspace";
 import * as Logging from "./Logging";
 import * as Watch from "./Watch";
 import * as Routing from "../src/Routing";
 import type * as API from "../src/api";
-import findWorkspaceDir from "@pnpm/find-workspace-dir";
-import findWorkspacePackages from "@pnpm/find-workspace-packages";
 
 type AppConfig = {
   /**
@@ -55,18 +55,21 @@ type ServeConfig = {
    *
    * Can be also specified through ASAP__IFACE environment variable.
    */
-  iface?: string | undefined;
+  iface: string | undefined;
 
   /**
    * Port to listen to.
    *
    * Can be also specified through ASAP__PORT environment variable.
    */
-  port?: number | undefined;
+  port: number | undefined;
+
+  xForwardedUser: string | undefined;
 };
 
 type App = {
   config: AppConfig;
+  workspace: Workspace.Workspace | null;
   basePath: string;
   buildApi: Build.BuildService<{ __main__: string }>;
   buildApp: Build.BuildService<{ __main__: string }>;
@@ -103,22 +106,9 @@ async function createApp(config: AppConfig): Promise<App> {
     onBuild: () => info("app build ready"),
   });
 
-  let external = undefined;
-  let workspaceDir = await findWorkspaceDir(config.projectPath);
-  if (workspaceDir != null) {
-    log("workspace", path.relative(process.cwd(), workspaceDir));
-    let workspacePackages = await findWorkspacePackages(workspaceDir);
-    external = (specifier: string) => {
-      for (let p of workspacePackages) {
-        if (
-          p.manifest.name != null &&
-          (specifier === p.manifest.name ||
-            specifier.startsWith(p.manifest.name + "/"))
-        )
-          return false;
-      }
-      return true;
-    };
+  let workspace = await Workspace.find(config.projectPath);
+  if (workspace != null) {
+    log("workspace", path.relative(process.cwd(), workspace.path));
   }
 
   let buildApi = Build.build({
@@ -129,11 +119,22 @@ async function createApp(config: AppConfig): Promise<App> {
     },
     platform: "node",
     env: config.env,
-    external,
+    external: (importSpecifier: string) => {
+      // No workspace found so every import should be treated as external.
+      if (workspace == null) return true;
+      // Fast check if the importSpecifier is exactly a package name from the
+      // workspace (this is a common thing to for packages to have a single
+      // entry point).
+      if (workspace?.packageNames.has(importSpecifier)) return false;
+      // Now slower check for imports of package submodules.
+      for (let name of workspace.packageNames)
+        if (importSpecifier.startsWith(name + "/")) return false;
+      return true;
+    },
     onBuild: () => info(`api build ready`),
   });
 
-  return { buildApi, buildApp, config, basePath };
+  return { buildApi, buildApp, config, basePath, workspace };
 }
 
 async function build(config: AppConfig) {
@@ -164,18 +165,19 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
 
   if (env === "development") {
     let watch = new Watch.Watch();
-    await watch.watch(projectPath);
-    let clock = await watch.clock(projectPath);
+    let watchPath = app.workspace?.path ?? projectPath;
+    await watch.watch(watchPath);
+    let clock = await watch.clock(watchPath);
 
     await app.buildApp.start();
     await app.buildApi.start();
 
-    await watch.subscribe({ path: projectPath, since: clock }, () => {
+    await watch.subscribe({ path: watchPath, since: clock }, () => {
       info("changes detected, rebuilding");
       app.buildApp.rebuild();
       app.buildApi.rebuild();
     });
-    info("watching project for changes");
+    info("watching path: $PWD/%s", path.relative(process.cwd(), watchPath));
   }
 
   if (env === "production") {
@@ -191,7 +193,7 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
     }
     // Preload API bundle at the startup so we fail early.
     try {
-      let api = await loadAPI(apiOutput);
+      let api = await loadAPI(app, apiOutput);
       if (api == null) throw new Error("no api");
       if (api instanceof Error) throw api;
     } catch {
@@ -199,54 +201,69 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
     }
   }
 
-  let server = Fastify.fastify();
+  let apiServer = new tinyhttp.App();
+  apiServer.all("*", (req, res, next) => serveApi(app, req, res, next));
 
-  server.addHook("preHandler", async (req) => {
-    // For /__static/ let's wait till the current build is ready.
-    if (env === "development" && req.url.startsWith("/__static/")) {
-      await app.buildApp.ready();
+  let staticServer = sirv(app.buildApp.buildPath, {
+    dev: app.config.env === "development",
+    immutable: true,
+    etag: true,
+  });
+
+  let server = new tinyhttp.App();
+  server.use((req, _res, next) => {
+    if (serveConfig.xForwardedUser != null) {
+      req.headers["x-forwarded-user"] = serveConfig.xForwardedUser;
     }
+    next();
   });
+  server.use(`/_api`, apiServer);
+  server.use(`/__static`, staticServer);
+  server.get(`*`, (req, res) => serveApp(app, req, res));
 
-  server.register(FastifyStatic, {
-    prefix: `${app.basePath}/__static`,
-    root: app.buildApp.buildPath,
-  });
-
-  server.get(`${app.basePath}/_api*`, serveApi(app));
-  server.get(`${app.basePath}/*`, serveApp(app));
-
-  let { iface = "10.0.88.2", port = 3001 } = serveConfig;
-  server.listen(port, iface, () => {
-    info("listening on http://%s:%d", iface, port);
-  });
+  let rootServer = new tinyhttp.App({ settings: { xPoweredBy: false } });
+  if (app.basePath !== "") {
+    rootServer.use(app.basePath, server);
+  } else {
+    rootServer.use(server);
+  }
+  rootServer.listen(
+    serveConfig.port,
+    () =>
+      info("listening on http://%s:%d", serveConfig.iface, serveConfig.port),
+    serveConfig.iface
+  );
 }
 
-let serveApp =
-  (app: App): Fastify.RouteHandler =>
-  async (_req, res) => {
-    let outs = await app.buildApp.ready();
-    let js = outs?.__main__.js?.relativePath ?? "__buildError.js";
-    let css = outs?.__main__.css?.relativePath;
-    let config = jsesc(
-      {
-        basePath: app.basePath,
-      },
-      { json: true, isScriptContext: true }
-    );
-    res.statusCode = 200;
-    res.header("Content-Type", "text/html");
-    res.send(
-      `
+let serveApp = async (
+  app: App,
+  _req: tinyhttp.Request,
+  res: tinyhttp.Response
+) => {
+  let outs = await app.buildApp.ready();
+  let js = outs?.__main__.js?.relativePath ?? "__buildError.js";
+  let css = outs?.__main__.css?.relativePath;
+  let config = jsesc(
+    {
+      basePath: app.basePath,
+    },
+    { json: true, isScriptContext: true }
+  );
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/html");
+  res.end(
+    `
     <!doctype html>
     <html>
-      <body>
-        <div id="asap"></div>
+      <head>
         ${
           css
             ? `<link rel="stylesheet" href="${app.basePath}/__static/${css}" />`
             : ""
         }
+      </head>
+      <body>
+        <div id="asap"></div>
         <script>
           window.ASAPConfig = ${config};
         </script>
@@ -254,52 +271,58 @@ let serveApp =
       </body>
     </html>
       `
-    );
-  };
+  );
+};
 
-let serveApi =
-  (app: App): Fastify.RouteHandler =>
-  async (req, res) => {
-    let output = await app.buildApi.ready();
-    if (output == null) {
-      res.statusCode = 500;
-      res.send("500 INTERNAL SERVER ERROR");
-      return;
+let serveApi = async (
+  app: App,
+  req: tinyhttp.Request,
+  res: tinyhttp.Response,
+  next: tinyhttp.NextFunction
+) => {
+  let url = new URL(`proto://example${req.url}`);
+  let output = await app.buildApi.ready();
+  if (output == null) {
+    res.statusCode = 500;
+    res.end("500 INTERNAL SERVER ERROR");
+    return;
+  }
+
+  let api = await loadAPI(app, output);
+  if (api instanceof Error || api == null) {
+    if (api instanceof Error) {
+      console.log(api);
     }
+    res.statusCode = 500;
+    res.end("500 INTERNAL SERVER ERROR");
+    return;
+  }
 
-    let api = await loadAPI(output);
-    if (api instanceof Error || api == null) {
-      if (api instanceof Error) {
-        console.log(api);
-      }
-      res.statusCode = 500;
-      res.send("500 INTERNAL SERVER ERROR");
-      return;
-    }
+  for (let route of api.routes) {
+    if (route.method !== req.method) continue;
+    let params = Routing.matches(route, url.pathname);
+    if (params == null) continue;
+    return await api.runRoute(route, params, req, res, next);
+  }
 
-    let reqPath = (req.params as { "*": string })["*"];
-    for (let route of api.routes) {
-      let params = Routing.matches(route, reqPath);
-      if (params == null) continue;
-      return await api.runRoute(route, req, res, params);
-    }
-
-    res.statusCode = 404;
-    res.send("404 NOT FOUND");
-  };
+  res.statusCode = 404;
+  res.end("404 NOT FOUND");
+};
 
 type LoadedAPI = {
   routes: API.Routes;
   runRoute: <P extends string>(
     route: API.Route<P>,
+    params: API.RouteParams<P>,
     req: API.Request,
     res: API.Response,
-    params: API.RouteParams<P>
+    next: API.Next
   ) => Promise<unknown>;
 };
 
 let loadAPI = memoize(
   async (
+    app: App,
     output: Build.BuildOutput<{ __main__: string }>
   ): Promise<LoadedAPI | Error | null> => {
     log("loading api bundle");
@@ -310,8 +333,8 @@ let loadAPI = memoize(
     let bundle = await fs.promises.readFile(bundlePath, "utf8");
 
     let context = {
+      ASAPConfig: { basePath: app.basePath },
       module: { exports: {} as { routes?: API.Routes } },
-      global,
       require,
       Buffer,
       process,
@@ -337,19 +360,29 @@ let loadAPI = memoize(
 
     let runRoute = async <P extends string>(
       route: API.Route<P>,
+      params: API.RouteParams<P>,
       req: API.Request,
       res: API.Response,
-      params: API.RouteParams<P>
+      next: API.Next
     ) => {
-      try {
-        return await route.handle(req, res, params);
-      } catch (err) {
+      let handleError = async (err: any) => {
         res.statusCode = 500;
-        res.send("500 INTERNAL SERVER ERROR");
+        res.end("500 INTERNAL SERVER ERROR");
         Logging.error("while serving API request");
         console.log(
           await formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
         );
+      };
+
+      try {
+        // TODO: seems fishy...
+        req.params = params;
+        return await route.handle(req, res, async (err) => {
+          if (err == null) return next(err);
+          handleError(err);
+        });
+      } catch (err) {
+        handleError(err);
       }
     };
 
@@ -435,6 +468,12 @@ let serveCmd = Cmd.command({
   description: "Serve application",
   args: {
     ...appConfigArgs,
+    xForwardedUser: Cmd.option({
+      long: "x-forwarded-user",
+      description: "Set X-Forwarded-User HTTP header",
+      env: "ASAP__X_FORWARDED_USER",
+      type: Cmd.string,
+    }),
     port: Cmd.option({
       long: "port",
       description: "Port to listen on (default: 3001)",
@@ -450,8 +489,15 @@ let serveCmd = Cmd.command({
       type: Cmd.string,
     }),
   },
-  handler: ({ projectPath = process.cwd(), basePath, env, port, iface }) => {
-    serve({ projectPath, basePath, env }, { port, iface });
+  handler: ({
+    projectPath = process.cwd(),
+    basePath,
+    env,
+    port,
+    iface,
+    xForwardedUser,
+  }) => {
+    serve({ projectPath, basePath, env }, { port, iface, xForwardedUser });
   },
 });
 

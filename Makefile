@@ -21,8 +21,6 @@ main.js: $(wildcard bin/*) pnpm-lock.yaml
 		--sourcemap=inline \
 		--platform=node \
 		--external:esbuild \
-		--external:fastify \
-		--external:fastify-static \
 		--external:fb-watchman \
 		--log-level=error \
 		--outfile=$@ ./bin/main.ts
