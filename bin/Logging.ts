@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as path from "path";
 import chalk from "chalk";
 import debug from "debug";
 import codeFrame from "@parcel/codeframe";
@@ -29,6 +30,8 @@ function makeError(message: string, locs: CodeLoc[]): string {
   for (let loc of locs) {
     let code = fs.readFileSync(loc.path, "utf8");
     let message = wrapMessage(loc.message, loc.column + 8);
+    let filePath = path.relative(process.cwd(), loc.path);
+    lines.push(`  At ${filePath}:${loc.line}:${loc.column}`);
     lines.push(
       codeFrame(
         code,
