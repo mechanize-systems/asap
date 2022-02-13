@@ -86,7 +86,8 @@ export function useLocation({ basePath = "" }: { basePath?: string } = {}) {
     // https://gist.github.com/bvaughn/e25397f70e8c65b0ae0d7c90b731b189
     checkForUpdates();
 
-    return () => events.forEach((e) => removeEventListener(e, checkForUpdates));
+    return () =>
+      events.forEach((e) => removeEventListener(e, checkForUpdates));
   }, [basePath]);
 
   // the 2nd argument of the `useLocation` return value is a function
@@ -96,7 +97,10 @@ export function useLocation({ basePath = "" }: { basePath?: string } = {}) {
   // it can be passed down as an element prop without any performance concerns.
   let router: Router = React.useMemo(
     () => ({
-      navigate: (to: string, { replace = false }: { replace?: boolean } = {}) =>
+      navigate: (
+        to: string,
+        { replace = false }: { replace?: boolean } = {}
+      ) =>
         history[replace ? eventReplaceState : eventPushState](
           null,
           "",

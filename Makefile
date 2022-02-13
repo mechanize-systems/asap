@@ -14,6 +14,10 @@ check:
 clean:
 	rm -rf lib main.js
 
+.PHONY: fmt
+fmt:
+	@pnpm prettier --write .
+
 main.js: $(wildcard bin/*) pnpm-lock.yaml
 	@mkdir -p $(@D)
 	@pnpm esbuild \

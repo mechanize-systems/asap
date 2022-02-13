@@ -32,5 +32,5 @@ The structure is the following:
       └── README.md
 
 [asap]: https://github.com/mechanize-systems/asap
-[TypeScript]: https://www.typescriptlang.org
+[typescript]: https://www.typescriptlang.org
 [pnpm]: https://pnpm.io

@@ -430,7 +430,10 @@ async function formatBundleErrorStackTrace(
       column: frame.columnNumber!,
     });
     if (line == null || column == null || source == null) continue;
-    source = path.relative(cwd, path.resolve(path.dirname(bundlePath), source));
+    source = path.relative(
+      cwd,
+      path.resolve(path.dirname(bundlePath), source)
+    );
     let item = `    at ${source}:${line}:${column}`;
     if (frame.functionName != null) {
       item = `${item} (${frame.functionName})`;
@@ -463,7 +466,8 @@ let appConfigArgs = {
   env: Cmd.option({
     short: "E",
     long: "env",
-    description: "either 'development' or 'production' (default: 'production')",
+    description:
+      "either 'development' or 'production' (default: 'production')",
     env: "NODE_ENV",
     defaultValue: () => "development" as AppEnv,
     type: Cmd.oneOf(["development", "production"]),

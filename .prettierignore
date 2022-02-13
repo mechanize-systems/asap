@@ -1,0 +1,4 @@
+/lib/*
+/main.js
+/api.js
+pnpm-lock.yaml

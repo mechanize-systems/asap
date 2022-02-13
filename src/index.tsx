@@ -81,14 +81,15 @@ export let Link = React.forwardRef(
   ) => {
     let router = Router.useRouter();
     let href = Routing.href(route, params);
-    let onClick: React.MouseEventHandler<HTMLAnchorElement> = React.useCallback(
-      (ev) => {
-        ev.preventDefault();
-        router.navigate(href);
-        props.onClick?.(ev);
-      },
-      [href]
-    );
+    let onClick: React.MouseEventHandler<HTMLAnchorElement> =
+      React.useCallback(
+        (ev) => {
+          ev.preventDefault();
+          router.navigate(href);
+          props.onClick?.(ev);
+        },
+        [href]
+      );
     return (
       <a
         {...props}
