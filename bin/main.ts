@@ -164,6 +164,7 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
 
   if (env === "development") {
     let watch = new Watch.Watch();
+    await watch.watch(projectPath);
     let clock = await watch.clock(projectPath);
 
     await app.buildApp.start();
