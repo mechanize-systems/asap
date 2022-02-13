@@ -9,6 +9,7 @@ import * as Routing from "./Routing";
 declare var ASAPConfig: { basePath: string };
 
 export let route = Router.route;
+export let useRouter = Router.useRouter;
 export let href = Routing.href;
 
 export type AppConfig = {
