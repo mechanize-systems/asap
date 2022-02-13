@@ -7,7 +7,7 @@ DTS = $(LIB:%.js=%.d.ts)
 build: api.js main.js $(LIB) $(DTS)
 
 .PHONY: check
-check:
+check $(DTS):
 	@pnpm tsc -b .
 
 .PHONY: clean

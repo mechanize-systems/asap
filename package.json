@@ -49,6 +49,6 @@
     "sirv": "^2.0.2"
   },
   "scripts": {
-    "build": "make check build"
+    "prepare": "make -s -j1 check build"
   }
 }
