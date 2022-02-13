@@ -179,7 +179,12 @@ export function build<E extends EnrtyPoints>(
         entryNames: "[dir]/[name]-[hash]",
         outdir: buildPath,
         bundle: true,
-        loader: { ".js": "jsx" },
+        loader: {
+          ".js": "jsx",
+          ".eot": "file",
+          ".woff": "file",
+          ".ttf": "file",
+        },
         metafile: true,
         splitting: platform === "browser",
         treeShaking: env === "production",
