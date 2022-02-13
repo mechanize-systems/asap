@@ -6,11 +6,14 @@ import * as Router from "./Router";
 import * as Routing from "./Routing";
 
 // This is what's being injected by the server.
-declare var ASAPConfig: { basePath: string };
+declare var ASAPConfig: Config;
 
 export let route = Router.route;
 export let useRouter = Router.useRouter;
 export let href = Routing.href;
+
+export type Config = { basePath: string };
+export let getConfig = (): Config => ASAPConfig;
 
 export type AppConfig = {
   /**
@@ -41,6 +44,7 @@ export type AppConfig = {
 export type AppChromeProps = {
   isNavigating: boolean;
   children: React.ReactNode;
+  AppLoading: React.ComponentType<AppLoadingProps>;
 };
 
 export type AppLoadingProps = {};
@@ -53,12 +57,9 @@ export function boot(config: AppConfig) {
     // TODO: error handling
     let element = document.getElementById("asap");
     let root = ReactDOM.createRoot(element!);
-    let AppLoading = config.AppLoading ?? AppLoadingDefault;
     root.render(
       <React.StrictMode>
-        <React.Suspense fallback={<AppLoading />}>
-          <App config={config} />
-        </React.Suspense>
+        <App config={config} />
       </React.StrictMode>
     );
   });
@@ -92,7 +93,7 @@ export let Link = React.forwardRef(
       <a
         {...props}
         ref={ref}
-        href={ASAPConfig.basePath + href}
+        href={getConfig().basePath + href}
         onClick={onClick}
       />
     );
@@ -105,7 +106,7 @@ type AppProps = {
 
 function App({ config }: AppProps) {
   let [isNavigating, path, router] = Router.useLocation({
-    basePath: ASAPConfig.basePath,
+    basePath: getConfig().basePath,
   });
   let [route, params] = React.useMemo(
     () => match(config.routes, path),
@@ -116,16 +117,14 @@ function App({ config }: AppProps) {
       config.AppOnPageNotFound ?? AppOnPageNotFoundDefault;
     return <AppOnPageNotFound />;
   }
-  let children = <route.Page key={route.path} {...params} />;
-  if (config.AppChrome != null) {
-    children = (
-      <config.AppChrome isNavigating={isNavigating}>
-        {children}
-      </config.AppChrome>
-    );
-  }
+  let AppChrome = config.AppChrome ?? AppChromeDefault;
+  let AppLoading = config.AppLoading ?? AppLoadingDefault;
   return (
-    <Router.ContextProvider value={router}>{children}</Router.ContextProvider>
+    <Router.ContextProvider value={router}>
+      <AppChrome isNavigating={isNavigating} AppLoading={AppLoading}>
+        <route.Page key={route.path} {...params} />
+      </AppChrome>
+    </Router.ContextProvider>
   );
 }
 
@@ -139,6 +138,10 @@ function match<T extends string>(
     return [route, params] as any;
   }
   return [null, null];
+}
+
+function AppChromeDefault(props: AppChromeProps) {
+  return <React.Suspense fallback={<props.AppLoading />}></React.Suspense>;
 }
 
 function AppLoadingDefault(_props: AppLoadingProps) {
