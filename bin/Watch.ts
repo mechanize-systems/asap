@@ -53,10 +53,10 @@ export class Watch {
     log("watch");
     await this._ready.promise;
     let def = deferred<void>();
-    this._client.command(["watch", path], (err, resp) => {
+    this._client.command(["watch", path], (err, _resp) => {
       if (err != null) def.reject(err);
       else {
-        log("clock %s", resp.clock);
+        log("watch ready");
         def.resolve();
       }
     });
