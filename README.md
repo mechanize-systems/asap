@@ -47,33 +47,52 @@ pnpm add react react-dom @mechanize/asap
 Let's create a simple app of two pages:
 
 ```sh
-cat <<EOF
+cat << EOF > ./app.js
+import * as React from "react";
 import * as ASAP from "@mechanize/asap";
 
 export let routes = {
-  index: ASAP.route("/", () => () => <div>index</div>),
-  hello: ASAP.route("/hello/:name", () => ({name}) => <div>hello {name}</div>),
+  index: ASAP.route("/", async () => ({ default: Index })),
+  hello: ASAP.route("/hello/:name", async () => ({ default: Hello })),
 };
 
-ASAP.boot({routes});
-EOF > ./app.js
+function Index() {
+  return (
+    <div>
+      <p>Welcome!</p>
+      <p>
+        Go to{" "}
+        <ASAP.Link route={routes.hello} params={{ name: "World" }}>
+          hello page
+        </ASAP.Link>
+      </p>
+    </div>
+  );
+}
+
+function Hello({ name }) {
+  return <div>Hello, {name}!</div>;
+}
+
+ASAP.boot({ routes });
+EOF
 ```
 
 Let's add a few simple API methods:
 
 ```sh
-cat <<EOF
+cat << EOF > ./api.js
 import * as api from "@mechanize/asap/api";
 
 export let routes = [
   api.route("GET", "/todo", (req, res) => {
     res.send([{ id: "1" }]);
   }),
-  api.route("GET", "/todo/:id", (req, res, params) => {
-    res.send({ id: params.id });
+  api.route("GET", "/todo/:id", (req, res) => {
+    res.send({ id: req.params.id });
   }),
 ];
-EOF > ./api.js
+EOF
 ```
 
 Now we can serve the app:

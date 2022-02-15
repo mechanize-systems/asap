@@ -159,7 +159,11 @@ function match<T extends string>(
 }
 
 function AppChromeDefault(props: AppChromeProps) {
-  return <React.Suspense fallback={<props.AppLoading />}></React.Suspense>;
+  return (
+    <React.Suspense fallback={<props.AppLoading />}>
+      {props.children}
+    </React.Suspense>
+  );
 }
 
 function AppLoadingDefault(_props: AppLoadingProps) {
