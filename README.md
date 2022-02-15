@@ -59,7 +59,7 @@ export let routes = {
 
 function Index() {
   return (
-    <div>
+    <>
       <p>Welcome!</p>
       <p>
         Go to{" "}
@@ -67,7 +67,7 @@ function Index() {
           hello page
         </ASAP.Link>
       </p>
-    </div>
+    </>
   );
 }
 
