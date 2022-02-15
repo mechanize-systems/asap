@@ -23,6 +23,8 @@
     "@types/react": "^17.0.39",
     "@types/react-dom": "^17.0.11",
     "@types/source-map-support": "^0.5.4",
+    "@tinyhttp/app": "^2.0.16",
+    "sirv": "^2.0.2",
     "chalk": "^4",
     "cmd-ts": "^0.10.0",
     "convert-source-map": "^1.8.0",
@@ -44,10 +46,8 @@
     "word-wrap": "^1.2.3"
   },
   "dependencies": {
-    "@tinyhttp/app": "^2.0.16",
     "esbuild": "^0.14.20",
-    "fb-watchman": "^2.0.1",
-    "sirv": "^2.0.2"
+    "fb-watchman": "^2.0.1"
   },
   "scripts": {
     "prepare": "make -s -j1 check build"
