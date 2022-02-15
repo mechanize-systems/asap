@@ -96,15 +96,20 @@ export function build<E extends EnrtyPoints>(
   };
 
   let started = false;
+  let currentVersion = 0;
   let previousOutput: null | Promise<BuildOutput<E>> = null;
-  let initialBuild = deferredWithCatch<esbuild.BuildIncremental>();
+  let initial = deferredWithCatch<esbuild.BuildIncremental>();
   let current = deferredWithCatch<{
     build: esbuild.BuildIncremental;
     output: BuildOutput<E>;
   }>();
   let currentBuildStart = performance.now();
 
-  let onBuild = async (build: esbuild.BuildIncremental) => {
+  let onBuild = async (build: esbuild.BuildIncremental, version: number) => {
+    if (version !== currentVersion) {
+      log("SKIPPING");
+      return;
+    }
     let spent = performance.now() - currentBuildStart;
     log(`onBuild`, `${spent.toFixed(0)}ms`);
     if (build.metafile != null) {
@@ -125,7 +130,11 @@ export function build<E extends EnrtyPoints>(
     if (config.onBuild != null) config.onBuild(build);
   };
 
-  let onBuildError = (err: Error) => {
+  let onBuildError = (err: Error, version: number) => {
+    if (version !== currentVersion) {
+      log("SKIPPING");
+      return;
+    }
     log(`onBuildError`);
     if ("errors" in err) {
       let locs: Logging.CodeLoc[] = [];
@@ -203,62 +212,59 @@ export function build<E extends EnrtyPoints>(
         },
       });
     } catch (err: any) {
-      initialBuild.reject(err);
-      onBuildError(err);
+      initial.reject(err);
+      onBuildError(err, 0);
       return;
     }
     if (build != null) {
-      initialBuild.resolve(build);
-      await onBuild(build);
+      initial.resolve(build);
+      await onBuild(build, 0);
     }
   };
 
   let stop = async () => {
     log(`stop()`);
     try {
-      let b = await initialBuild.promise;
+      let b = await initial.promise;
       b.rebuild.dispose();
       b.stop?.();
     } catch (_err) {}
     try {
-      let b = await initialBuild.promise;
+      let b = await initial.promise;
       b.stop?.();
     } catch (_err) {}
     started = false;
   };
 
-  let rebuild = async () => {
+  let rebuild = async (): Promise<void> => {
     log(`rebuild()`);
-    if (initialBuild.isResolved) {
-      log(`initialBuild.isResolved`);
-      let ib = initialBuild.value;
-      if (!current.isCompleted) await current.promise;
+    if (initial.isResolved) {
+      log(`initial.isResolved`);
+      currentVersion += 1;
+      let version = currentVersion;
       if (current.isResolved) current.value.build.stop?.();
       current = deferredWithCatch();
       currentBuildStart = performance.now();
       let build: esbuild.BuildIncremental | null = null;
       try {
-        build = await ib.rebuild();
+        build = await initial.value.rebuild();
       } catch (err: any) {
-        onBuildError(err);
-        return;
+        return await onBuildError(err, version);
       }
-      if (build != null) {
-        await onBuild(build);
-      }
-    } else if (initialBuild.isRejected) {
-      log(`initialBuild.isRejected`);
-      initialBuild = deferredWithCatch();
+      return await onBuild(build, version);
+    } else if (initial.isRejected) {
+      log(`initial.isRejected`);
+      initial = deferredWithCatch();
       current = deferredWithCatch();
-      start();
+      return await start();
     } else {
-      log(`await initialBuild`);
-      await initialBuild.promise;
-      await rebuild();
+      log(`await initial`);
+      await initial.promise;
+      return await rebuild();
     }
   };
 
-  let ready = async () => {
+  let ready = async (): Promise<BuildOutput<E> | null> => {
     if (!started) {
       try {
         if (previousOutput == null) previousOutput = loadOutput();
@@ -269,7 +275,8 @@ export function build<E extends EnrtyPoints>(
     } else {
       try {
         await current.promise;
-        return current.value.output;
+        if (current.isResolved) return current.value.output;
+        else return null;
       } catch (_err) {
         return null;
       }

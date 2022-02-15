@@ -14,6 +14,7 @@ import * as Cmd from "cmd-ts";
 import * as CmdFs from "cmd-ts/batteries/fs";
 import memoize from "memoize-weak";
 import sirv from "sirv";
+import debounce from "debounce";
 
 import * as Build from "./Build";
 import * as Workspace from "./Workspace";
@@ -173,12 +174,14 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
     await app.buildApp.start();
     await app.buildApi.start();
 
-    await watch.subscribe({ path: watchPath, since: clock }, () => {
+    let onChange = debounce(() => {
       info("changes detected, rebuilding");
       app.buildApp.rebuild();
       app.buildApi.rebuild();
-    });
+    }, 300);
+
     info("watching path: $PWD/%s", path.relative(process.cwd(), watchPath));
+    await watch.subscribe({ path: watchPath, since: clock }, onChange);
   }
 
   if (env === "production") {
