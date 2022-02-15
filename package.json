@@ -37,7 +37,6 @@
     "prettier": "^2.5.1",
     "react": "rc",
     "react-dom": "rc",
-    "regexparam": "^2.0.0",
     "source-map": "0.6.0",
     "source-map-support": "^0.5.21",
     "ts-node": "^10.5.0",
@@ -47,7 +46,8 @@
   },
   "dependencies": {
     "esbuild": "^0.14.20",
-    "fb-watchman": "^2.0.1"
+    "fb-watchman": "^2.0.1",
+    "regexparam": "^2.0.0"
   },
   "files": [
     "LICENSE",
