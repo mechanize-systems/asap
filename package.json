@@ -1,6 +1,6 @@
 {
   "name": "@mechanize/asap",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "React web application framework",
   "bin": {
     "asap": "main.js"
@@ -49,6 +49,15 @@
     "esbuild": "^0.14.20",
     "fb-watchman": "^2.0.1"
   },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "api.d.ts",
+    "api.js",
+    "lib/",
+    "main.js",
+    "package.json"
+  ],
   "scripts": {
     "prepare": "make -s -j1 check build"
   }
