@@ -4,8 +4,8 @@
  * This provides a wrapper on top of esbuild's incremental builds.
  */
 
+import * as crypto from "crypto";
 import * as path from "path";
-import tempfile from "tempfile";
 import * as fs from "fs";
 import * as esbuild from "esbuild";
 import { deferred } from "./PromiseUtil";
@@ -113,7 +113,10 @@ export function build<E extends EnrtyPoints>(
     let spent = performance.now() - currentBuildStart;
     log(`onBuild`, `${spent.toFixed(0)}ms`);
     if (build.metafile != null) {
-      let metafileTempPath = tempfile(".json");
+      let metafileTempPath = path.join(
+        buildPath,
+        crypto.randomBytes(6).toString("hex")
+      );
       await fs.promises.writeFile(
         metafileTempPath,
         JSON.stringify(build.metafile)

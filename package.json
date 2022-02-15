@@ -38,7 +38,6 @@
     "regexparam": "^2.0.0",
     "source-map": "0.6.0",
     "source-map-support": "^0.5.21",
-    "tempfile": "^4.0.0",
     "ts-node": "^10.5.0",
     "typescript": "^4.5.5",
     "typescript-language-server": "^0.9.6",
