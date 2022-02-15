@@ -13,7 +13,7 @@ check $(DTS0):
 
 .PHONY: clean
 clean:
-	rm -rf lib main.js
+	rm -rf lib main.js api.js
 
 .PHONY: fmt
 fmt:
