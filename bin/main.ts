@@ -36,7 +36,7 @@ type AppConfig = {
   /**
    * Base path application is mounted to.
    *
-   * Can be also specified through ASAP__BASEPATH environment variable.
+   * Can be also specified through ASAP__BASE_PATH environment variable.
    * Can be also specified dynamically via Content-Base HTTP header.
    */
   basePath?: string;
@@ -54,7 +54,7 @@ type ServeConfig = {
   /**
    * Interface to listen to.
    *
-   * Can be also specified through ASAP__IFACE environment variable.
+   * Can be also specified through ASAP__INTERFACE environment variable.
    */
   iface: string | undefined;
 
@@ -375,7 +375,13 @@ let loadAPI = memoize(
       module: apiModule,
       require: apiRequire,
       Buffer,
-      process,
+      process: {
+        ...process,
+        env: {
+          ...process.env,
+          ASAP__BASE_PATH: app.basePath,
+        },
+      },
       console,
       setTimeout,
       setInterval,
@@ -488,7 +494,7 @@ let appConfigArgs = {
   basePath: Cmd.option({
     long: "base-path",
     description: "Base path application is running at",
-    env: "ASAP__BASEPATH",
+    env: "ASAP__BASE_PATH",
     defaultValue: () => "" as AppEnv,
     type: Cmd.string,
   }),
@@ -501,6 +507,14 @@ let appConfigArgs = {
     defaultValue: () => "development" as AppEnv,
     type: Cmd.oneOf(["development", "production"]),
   }),
+};
+
+let portType: Cmd.Type<string, number> = {
+  async from(value: string) {
+    if (value.startsWith(":")) value = value.slice(1);
+    if (!/^\d+$/.exec(value)) throw new Error("Not a number");
+    return parseInt(value, 10);
+  },
 };
 
 let serveCmd = Cmd.command({
@@ -519,13 +533,13 @@ let serveCmd = Cmd.command({
       description: "Port to listen on (default: 3001)",
       defaultValue: () => 3001,
       env: "ASAP__PORT",
-      type: Cmd.number,
+      type: portType,
     }),
     iface: Cmd.option({
       long: "interface",
       description: "Interface to listen on (default: 127.0.0.1)",
       defaultValue: () => "127.0.0.1",
-      env: "ASAP__IFACE",
+      env: "ASAP__INTERFACE",
       type: Cmd.string,
     }),
   },
