@@ -44,10 +44,11 @@ Add dependencies to the project:
 pnpm add react react-dom @mechanize/asap
 ```
 
-Let's create a simple app of two pages:
+Let's create a simple app of two pages.
 
-```sh
-cat << EOF > ./app.js
+First of all create `app.js` in the root of your repository:
+
+```js
 import * as React from "react";
 import * as ASAP from "@mechanize/asap";
 
@@ -75,13 +76,11 @@ function Hello({ name }) {
 }
 
 ASAP.boot({ routes });
-EOF
 ```
 
-Let's add a few simple API methods:
+Let's add a few simple API methods, create `api.js` file also in the root of the repo:
 
-```sh
-cat << EOF > ./api.js
+```js
 import * as api from "@mechanize/asap/api";
 
 export let routes = [
@@ -92,7 +91,6 @@ export let routes = [
     res.send({ id: req.params.id });
   }),
 ];
-EOF
 ```
 
 Now we can serve the app:
