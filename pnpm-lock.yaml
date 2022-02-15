@@ -7,6 +7,7 @@ specifiers:
   '@pnpm/logger': ^4.0.0
   '@tinyhttp/app': ^2.0.16
   '@types/convert-source-map': ^1.5.2
+  '@types/debounce': ^1.2.1
   '@types/debug': ^4.1.7
   '@types/fb-watchman': ^2.0.1
   '@types/jsesc': ^3.0.1
@@ -17,6 +18,7 @@ specifiers:
   chalk: ^4
   cmd-ts: ^0.10.0
   convert-source-map: ^1.8.0
+  debounce: ^1.2.1
   debug: ^4.3.3
   error-stack-parser: ^2.0.7
   esbuild: ^0.14.20
@@ -31,7 +33,6 @@ specifiers:
   sirv: ^2.0.2
   source-map: 0.6.0
   source-map-support: ^0.5.21
-  tempfile: ^4.0.0
   ts-node: ^10.5.0
   typescript: ^4.5.5
   typescript-language-server: ^0.9.6
@@ -49,6 +50,7 @@ devDependencies:
   '@pnpm/find-workspace-packages': 3.1.40_@pnpm+logger@4.0.0
   '@pnpm/logger': 4.0.0
   '@types/convert-source-map': 1.5.2
+  '@types/debounce': 1.2.1
   '@types/debug': 4.1.7
   '@types/fb-watchman': 2.0.1
   '@types/jsesc': 3.0.1
@@ -59,6 +61,7 @@ devDependencies:
   chalk: 4.1.2
   cmd-ts: 0.10.0
   convert-source-map: 1.8.0
+  debounce: 1.2.1
   debug: 4.3.3
   error-stack-parser: 2.0.7
   eslint: 8.8.0
@@ -70,7 +73,6 @@ devDependencies:
   regexparam: 2.0.0
   source-map: 0.6.0
   source-map-support: 0.5.21
-  tempfile: 4.0.0
   ts-node: 10.5.0_99ae9436e134a034c8d45fdd98ebbf22
   typescript: 4.5.5
   typescript-language-server: 0.9.6
@@ -539,6 +541,10 @@ packages:
     resolution: {integrity: sha512-tHs++ZeXer40kCF2JpE51Hg7t4HPa18B1b1Dzy96S0eCw8QKECNMYMfwa1edK/x8yCN0r4e6ewvLcc5CsVGkdg==}
     dev: true
 
+  /@types/debounce/1.2.1:
+    resolution: {integrity: sha512-epMsEE85fi4lfmJUH/89/iV/LI+F5CvNIvmgs5g5jYFPfhO2S/ae8WSsLOKWdwtoaZw9Q2IhJ4tQ5tFCcS/4HA==}
+    dev: true
+
   /@types/debug/4.1.7:
     resolution: {integrity: sha512-9AonUzyTjXXhEOa0DnqpzZi6VHlqKMswga9EXjpXnnqxwLtdvPPtlO8evrI5D9S6asFRCQ6v+wpiUKbw+vKqyg==}
     dependencies:
@@ -896,6 +902,10 @@ packages:
 
   /data-uri-to-buffer/2.0.2:
     resolution: {integrity: sha512-ND9qDTLc6diwj+Xe5cdAgVTbLVdXbtxTJRXRhli8Mowuaan+0EJOtdqJ0QCHNSSPyoXGx9HX2/VMnKeC34AChA==}
+    dev: true
+
+  /debounce/1.2.1:
+    resolution: {integrity: sha512-XRRe6Glud4rd/ZGQfiV1ruXSfbvfJedlV9Y6zOlP+2K04vBYiJEte6stfFkCP03aMnY5tsipamumUjL14fofug==}
     dev: true
 
   /debug/4.3.3:
@@ -2303,14 +2313,6 @@ packages:
     engines: {node: '>=8'}
     dev: true
 
-  /tempfile/4.0.0:
-    resolution: {integrity: sha512-dNH6UWyI8kijDmLVb0IJvCG4JZ5uOmy40CLoi/dVySL49v0f0Y+jIN2rE6Hj85y8mIIya1vwpKZlL9jASs5ktg==}
-    engines: {node: '>=12.20'}
-    dependencies:
-      temp-dir: 2.0.0
-      uuid: 8.3.2
-    dev: true
-
   /tempy/1.0.1:
     resolution: {integrity: sha512-biM9brNqxSc04Ee71hzFbryD11nX7VPhQQY32AdDmjFvodsRFz/3ufeoTZ6uYkRFfGo188tENcASNs3vTdsM0w==}
     engines: {node: '>=10'}
@@ -2451,11 +2453,6 @@ packages:
 
   /util-deprecate/1.0.2:
     resolution: {integrity: sha1-RQ1Nyfpw3nMnYvvS1KKJgUGaDM8=}
-    dev: true
-
-  /uuid/8.3.2:
-    resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
-    hasBin: true
     dev: true
 
   /v8-compile-cache-lib/3.0.0:
