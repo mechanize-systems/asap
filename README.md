@@ -4,7 +4,7 @@ An opinionated application server for React Single Page Applications.
 
 ## Motivation
 
-Next.js and others are great but they favor use case of landing pages and
+Next.js and others are great but they favor use cases of landing pages and
 ecommerce websites, providing them with SSR, "on the edge" deployment etc.
 
 These are all great features but we don't always need such complexity if all we
@@ -12,13 +12,14 @@ want to implement is a simple React app and a few API routes along.
 
 Therefore there's asap which:
 
-- ... is a simple application server built on top of fastify, esbuild and React
+- ... is a simple application server built on top of [tinyhttp][], [esbuild][]
+  and [React][]
 - ... strives to enable fast iterative development
 - ... and get out of your way in production
 
 ## Quickstart
 
-Init a new project:
+Initialize a new project:
 
 ```sh
 mkdir example && cd example && pnpm init
@@ -41,7 +42,7 @@ export let routes = {
   hello: ASAP.route("/hello/:name", () => ({name}) => <div>hello {name}</div>),
 };
 
-ASAP.boot(routes);
+ASAP.boot({routes});
 EOF > ./app.js
 ```
 
@@ -52,11 +53,11 @@ cat <<EOF
 import * as api from "@mechanize/asap/api";
 
 export let routes = [
-  api.route("GET", "/todo", () => {
-    return [{ id: "1" }];
+  api.route("GET", "/todo", (req, res) => {
+    res.send([{ id: "1" }]);
   }),
-  api.route("GET", "/todo/:id", (_req, _res, { id }) => {
-    return { id };
+  api.route("GET", "/todo/:id", (req, res, params) => {
+    res.send({ id: params.id });
   }),
 ];
 EOF > ./api.js
@@ -82,7 +83,7 @@ pnpm asap serve --env production
 
 ## Design Overview
 
-- asap runs a [tinyhttp][] server to server HTML page skeletons (an empty page
+- asap runs a [tinyhttp][] server to serve HTML page skeletons (an empty page
   with `<script>` tags to launch the client application) and API requests
 - in development asap compiles client code with [esbuild][]
 - in development asap compiles server code with [esbuild][], this allows to hot
@@ -92,5 +93,6 @@ pnpm asap serve --env production
 - on client there's `@mechanize/asap` library which provides suspense-enabled
   typesafe routing
 
+[react]: http://reactjs.org
 [tinyhttp]: https://tinyhttp.v1rtl.site
 [esbuild]: https://esbuild.github.io

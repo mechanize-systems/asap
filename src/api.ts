@@ -8,7 +8,9 @@ import * as Routing from "./Routing";
 export type Request<Params = void> = http.IncomingMessage & {
   params: Params;
 };
-export type Response = http.ServerResponse;
+export type Response = http.ServerResponse & {
+  send(body: unknown): void;
+};
 export type Next = (err?: any) => void;
 export type HTTPMethod = "GET" | "POST";
 export type RouteParams<P extends string> = Routing.RouteParams<P>;
