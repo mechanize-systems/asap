@@ -45,12 +45,6 @@ ASAP.boot(routes);
 EOF > ./app.js
 ```
 
-Now we can serve the app:
-
-```sh
-pnpm asap serve
-```
-
 Let's add a few simple API methods:
 
 ```sh
@@ -68,7 +62,7 @@ export let routes = [
 EOF > ./api.js
 ```
 
-Serve the app with API:
+Now we can serve the app:
 
 ```sh
 pnpm asap serve
@@ -88,9 +82,15 @@ pnpm asap serve --env production
 
 ## Design Overview
 
-asap works on top of fastify, esbuild and React:
+- asap runs a [tinyhttp][] server to server HTML page skeletons (an empty page
+  with `<script>` tags to launch the client application) and API requests
+- in development asap compiles client code with [esbuild][]
+- in development asap compiles server code with [esbuild][], this allows to hot
+  reload server code (on changes the bundle will be rebuilt and the next request
+  will be served using newly built code)
+- in production [esbuild][] is not used and built bundles are used instead
+- on client there's `@mechanize/asap` library which provides suspense-enabled
+  typesafe routing
 
-- The esbuild is used to build bundles for app pages and for API.
-- The fastify is used to serve a page skeleton, app pages bundle and handle API
-  requests.
-- On changes asap rebuidlds both the app pages bundle the API bundle.
+[tinyhttp]: https://tinyhttp.v1rtl.site
+[esbuild]: https://esbuild.github.io
