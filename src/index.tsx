@@ -9,8 +9,25 @@ import * as Routing from "./Routing";
 declare var ASAPConfig: Config;
 
 export let route = Router.route;
+
 export let useRouter = Router.useRouter;
-export let href = Routing.href;
+
+/**
+ * Generate `href` for the specified `route` and route `params`.
+ */
+export let href: typeof Routing.href = (route, params) => {
+  let basePath = getConfig().basePath;
+  return basePath + Routing.href(route, params);
+};
+
+/**
+ * Generate href for the specified `href` respecting currently configured
+ * `basePath`.
+ */
+export let href0 = (href: string) => {
+  let basePath = getConfig().basePath;
+  return basePath + href;
+};
 
 export type Config = { basePath: string };
 export let getConfig = (): Config => ASAPConfig;
