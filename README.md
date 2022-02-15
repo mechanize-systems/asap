@@ -1,4 +1,4 @@
-# asap
+# ASAP
 
 An opinionated application server for React Single Page Applications.
 
@@ -10,12 +10,25 @@ ecommerce websites, providing them with SSR, "on the edge" deployment etc.
 These are all great features but we don't always need such complexity if all we
 want to implement is a simple React app and a few API routes along.
 
-Therefore there's asap which:
+Therefore there's ASAP which:
 
 - ... is a simple application server built on top of [tinyhttp][], [esbuild][]
   and [React][]
 - ... strives to enable fast iterative development
 - ... and get out of your way in production
+
+## Features
+
+- ASAP is opinionated
+
+- ASAP builds both client and server code with esbuild, you don't need to mess
+  with build configuration (also because you can't)
+
+- In development mode ASAP automatically reloads server code on changes, you
+  don't need to restart the `asap serve` to iterate
+
+- ASAP provides a very thin client side application framework on top of React
+  with type safe routing
 
 ## Quickstart
 
@@ -83,10 +96,10 @@ pnpm asap serve --env production
 
 ## Design Overview
 
-- asap runs a [tinyhttp][] server to serve HTML page skeletons (an empty page
+- ASAP runs a [tinyhttp][] server to serve HTML page skeletons (an empty page
   with `<script>` tags to launch the client application) and API requests
-- in development asap compiles client code with [esbuild][]
-- in development asap compiles server code with [esbuild][], this allows to hot
+- in development ASAP compiles client code with [esbuild][]
+- in development ASAP compiles server code with [esbuild][], this allows to hot
   reload server code (on changes the bundle will be rebuilt and the next request
   will be served using newly built code)
 - in production [esbuild][] is not used and built bundles are used instead
