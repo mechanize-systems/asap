@@ -209,7 +209,7 @@ export function build<E extends EnrtyPoints>(
             : [],
         minify: env === "production",
         logLevel: "silent",
-        sourcemap: env === "production" ? "external" : "inline",
+        sourcemap: env === "production" ? "external" : true,
         define: {
           NODE_NEV: env,
         },
