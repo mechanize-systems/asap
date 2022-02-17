@@ -11,6 +11,10 @@ build: api.js main.js $(LIB) $(DTS)
 check $(DTS0):
 	@pnpm tsc -b .
 
+.PHONY: test
+test:
+	@pnpm playwright test
+
 .PHONY: clean
 clean:
 	rm -rf lib main.js api.js
