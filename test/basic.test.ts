@@ -34,7 +34,7 @@ test("development workflow", async ({ page }) => {
     await expectPageContentToBe(page, "CHANGED!");
   }
 
-  server.kill("SIGINT");
+  server.kill("SIGTERM");
   await project.dispose();
 });
 
@@ -49,7 +49,7 @@ test("production workflow", async ({ page }) => {
   ]);
   await Harness.sleep(500); // TODO: get rid of this by checking stdout logging?
   await runTestScenario(page);
-  server.kill("SIGINT");
+  server.kill("SIGTERM");
   await project.dispose();
 });
 

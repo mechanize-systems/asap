@@ -1,6 +1,8 @@
 import "source-map-support/register";
 
 import module from "module";
+import type * as esbuild from "esbuild";
+import escapeStringRegexp from "escape-string-regexp";
 import * as SourceMap from "source-map";
 import * as ConvertSourceMap from "convert-source-map";
 import * as ErrorStackParser from "error-stack-parser";
@@ -98,6 +100,11 @@ async function createApp(config: AppConfig): Promise<App> {
     }
   }
 
+  let workspace = await Workspace.find(config.projectPath);
+  if (workspace != null) {
+    log("workspace", path.relative(process.cwd(), workspace.path));
+  }
+
   let buildApp = Build.build({
     buildId: "app",
     projectPath: config.projectPath,
@@ -108,16 +115,58 @@ async function createApp(config: AppConfig): Promise<App> {
     onBuild: () => info("app build ready"),
   });
 
-  let workspace = await Workspace.find(config.projectPath);
-  if (workspace != null) {
-    log("workspace", path.relative(process.cwd(), workspace.path));
-  }
+  let apiEntryPoint = path.join(config.projectPath, "api");
+
+  // This plugin tries to resolve an api entry point and if found nothing it
+  // generates a synthetic empty module so that:
+  //
+  // - Such empty module is treated as absence of API
+  // - In development mode esbuild is still running and thus it's possible to
+  //   add api w/o reloading the asap process.
+  // - The little downside is that a tiny-tiny empty bundle is still being
+  //   built.
+  let apiEntryPointPlugin: esbuild.Plugin = {
+    name: "api-entry-point",
+    setup(build) {
+      build.onResolve(
+        { filter: new RegExp("^" + escapeStringRegexp(apiEntryPoint) + "$") },
+        async (args) => {
+          let suffixes = [
+            ".ts",
+            ".js",
+            ".tsx",
+            ".jsx",
+            "/index.ts",
+            "/index.js",
+            "/index.tsx",
+            "/index.jsx",
+          ];
+          for (let suffix of suffixes) {
+            let path = args.path + suffix;
+            try {
+              await fs.promises.stat(path);
+              return { path };
+            } catch {
+              continue;
+            }
+          }
+          return { namespace: "api", path: "synthetic-entry" };
+        }
+      );
+      build.onLoad(
+        { filter: /^synthetic-entry$/, namespace: "api" },
+        (_args) => {
+          return { contents: `` };
+        }
+      );
+    },
+  };
 
   let buildApi = Build.build({
     buildId: "api",
     projectPath: config.projectPath,
     entryPoints: {
-      __main__: path.join(config.projectPath, "api"),
+      __main__: apiEntryPoint,
     },
     platform: "node",
     env: config.env,
@@ -133,7 +182,11 @@ async function createApp(config: AppConfig): Promise<App> {
         if (importSpecifier.startsWith(name + "/")) return false;
       return true;
     },
-    onBuild: () => info(`api build ready`),
+    onBuild: (build) => {
+      let hasApi = !("api:synthetic-entry" in (build.metafile?.inputs ?? {}));
+      if (hasApi) info(`api build ready`);
+    },
+    plugins: [apiEntryPointPlugin],
   });
 
   return { buildApi, buildApp, config, basePath, workspace };

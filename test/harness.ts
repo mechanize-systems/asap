@@ -9,6 +9,7 @@ export type TestProjectSpec = {
 export type TestProject = {
   projectRoot: string;
   writeFile: (path: string, content: string) => Promise<void>;
+  unlink: (path: string) => Promise<void>;
   exec: (cmd: string, args: string[]) => ExecaChildProcess;
   dispose: () => Promise<void>;
 };
@@ -48,13 +49,16 @@ export async function createTestProject(
   let writeFile: TestProject["writeFile"] = (p: string, content: string) =>
     fs.promises.writeFile(path.join(projectRoot, p), content);
 
+  let unlink: TestProject["unlink"] = (p: string) =>
+    fs.promises.unlink(path.join(projectRoot, p));
+
   let dispose: TestProject["dispose"] = async () => {
     await exec("rm", ["-rf", projectRoot]);
   };
 
   await exec("pnpm", ["install"]);
 
-  return { projectRoot, exec, writeFile, dispose };
+  return { projectRoot, exec, writeFile, unlink, dispose };
 }
 
 export function sleep(ms: number) {
