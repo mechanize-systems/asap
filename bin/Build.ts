@@ -38,6 +38,7 @@ export type BuildConfig<E extends EnrtyPoints> = {
   external?: string[] | ((specifier: string) => boolean) | undefined;
   onBuild?: (b: esbuild.BuildIncremental) => void;
   env?: "development" | "production";
+  plugins?: esbuild.Plugin[];
 };
 
 /**
@@ -175,6 +176,9 @@ export function build<E extends EnrtyPoints>(
         });
       },
     });
+  }
+  if (config.plugins != null) {
+    plugins.push(...config.plugins);
   }
 
   let start = async () => {
