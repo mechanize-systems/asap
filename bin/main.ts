@@ -198,7 +198,6 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
     // Preload API bundle at the startup so we fail early.
     try {
       let api = await loadAPI(app, apiOutput);
-      if (api == null) throw new Error("no api");
       if (api instanceof Error) throw api;
     } catch {
       fatal("could not initialize api bundle");
@@ -222,22 +221,13 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
     next();
   });
   server.use(async (req, res, next) => {
-    function assertT<T>(v: T | null | Error): asserts v is T {
-      if (v == null || v instanceof Error) {
-        if (app.config.env === "production") {
-          if (v instanceof Error) console.log(v);
-          res.sendStatus(500);
-        } else next();
-      }
-    }
-
     let output = await app.buildApi.ready();
-    assertT(output);
+    if (output == null) return res.sendStatus(500);
     let api = await loadAPI(app, output);
-    assertT(api);
+    if (api instanceof Error) return res.sendStatus(500);
 
     if (api.exports.onRequest != null) {
-      api.handle(
+      return api.handle(
         api.exports.onRequest,
         undefined,
         req as any as API.Request,
@@ -245,7 +235,7 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
         next
       );
     } else {
-      next();
+      return next();
     }
   });
   server.use(`/_api`, apiServer);
@@ -318,10 +308,7 @@ let serveApi = async (
   }
 
   let api = await loadAPI(app, output);
-  if (api instanceof Error || api == null) {
-    if (api instanceof Error) {
-      console.log(api);
-    }
+  if (api instanceof Error) {
     res.statusCode = 500;
     res.end("500 INTERNAL SERVER ERROR");
     return;
@@ -357,11 +344,14 @@ let loadAPI = memoize(
   async (
     app: App,
     output: Build.BuildOutput<{ __main__: string }>
-  ): Promise<LoadedAPI | Error | null> => {
+  ): Promise<LoadedAPI | Error> => {
     log("loading api bundle");
 
     const bundlePath = output.__main__.js?.path;
-    if (bundlePath == null) return new Error("no api bundle found");
+    if (bundlePath == null) {
+      Logging.error("no api bundle found");
+      return new Error("no api bundle found");
+    }
 
     let bundle = await fs.promises.readFile(bundlePath, "utf8");
 
@@ -402,7 +392,7 @@ let loadAPI = memoize(
       console.log(
         await formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
       );
-      return null;
+      return new Error("error loading API bundle");
     }
 
     let handle = async <P>(
