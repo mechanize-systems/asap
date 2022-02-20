@@ -13,7 +13,7 @@ check $(DTS0):
 
 .PHONY: test
 test:
-	@pnpm playwright test
+	@pnpm playwright test -j1
 
 .PHONY: clean
 clean:
