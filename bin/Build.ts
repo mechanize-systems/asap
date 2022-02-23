@@ -199,6 +199,7 @@ export function build<E extends EnrtyPoints>(
           ".js": "jsx",
           ".eot": "file",
           ".woff": "file",
+          ".woff2": "file",
           ".ttf": "file",
         },
         metafile: true,
