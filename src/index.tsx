@@ -1,6 +1,7 @@
+/// <reference types="react/next" />
 /// <reference types="react-dom/next" />
 
-import * as ReactDOM from "react-dom";
+import * as ReactDOM from "react-dom/client";
 import * as React from "react";
 import * as Router from "./Router";
 import * as Routing from "./Routing";
