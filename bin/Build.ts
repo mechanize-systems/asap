@@ -201,6 +201,7 @@ export function build<E extends EnrtyPoints>(
           ".woff": "file",
           ".woff2": "file",
           ".ttf": "file",
+          ".wasm": "file",
         },
         metafile: true,
         splitting: platform === "browser",
