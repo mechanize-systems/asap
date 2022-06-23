@@ -208,6 +208,7 @@ export function build<E extends EnrtyPoints>(
         treeShaking: env === "production",
         incremental: true,
         format: platform === "browser" ? "esm" : "cjs",
+        target: platform === "browser" ? "esnext" : "node16",
         platform,
         external:
           config.external && Array.isArray(config.external)
