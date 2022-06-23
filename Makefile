@@ -23,6 +23,11 @@ clean:
 fmt:
 	@pnpm prettier --write .
 
+.envrc:
+	echo 'layout nodenv 16.13.2' > $@
+	echo 'export PROJECT__ROOT="$$PWD"' >> $@
+	echo 'PATH_add "$$PROJECT__ROOT/.bin"' >> $@
+
 main.js: $(wildcard bin/*) pnpm-lock.yaml
 	@mkdir -p $(@D)
 	@pnpm esbuild \
