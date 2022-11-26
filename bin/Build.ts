@@ -196,6 +196,7 @@ export function build<E extends EnrtyPoints>(
         entryNames: "[dir]/[name]-[hash]",
         outdir: buildPath,
         bundle: true,
+        jsx: "automatic",
         loader: {
           ".js": "jsx",
           ".eot": "file",

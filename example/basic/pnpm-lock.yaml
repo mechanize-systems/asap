@@ -1,55 +1,7 @@
-lockfileVersion: 5.3
+lockfileVersion: 5.4
 
 specifiers:
   '@mechanize/asap': link:../../
-  react: rc
-  react-dom: rc
 
 dependencies:
   '@mechanize/asap': link:../..
-  react: 18.0.0-rc.0
-  react-dom: 18.0.0-rc.0_react@18.0.0-rc.0
-
-packages:
-
-  /js-tokens/4.0.0:
-    resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
-    dev: false
-
-  /loose-envify/1.4.0:
-    resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
-    hasBin: true
-    dependencies:
-      js-tokens: 4.0.0
-    dev: false
-
-  /object-assign/4.1.1:
-    resolution: {integrity: sha1-IQmtx5ZYh8/AXLvUQsrIv7s2CGM=}
-    engines: {node: '>=0.10.0'}
-    dev: false
-
-  /react-dom/18.0.0-rc.0_react@18.0.0-rc.0:
-    resolution: {integrity: sha512-tdD1n0svTndHBQvVAq/f2Kx7FgQ30CpSLp87/neQKAHPW5WtdgW1sBSwmFAcMQOrmstTuP0M+zRlH86f9kMX/A==}
-    peerDependencies:
-      react: ^18.0.0-rc.0
-    dependencies:
-      loose-envify: 1.4.0
-      object-assign: 4.1.1
-      react: 18.0.0-rc.0
-      scheduler: 0.21.0-rc.0-next-fe905f152-20220107
-    dev: false
-
-  /react/18.0.0-rc.0:
-    resolution: {integrity: sha512-PawosMBgF8k5Nlc3++ibzjFqPvo1XKv80MNtVYqz3abHHB2w3IpU65sSdSmBd2ooCwVhcp9b1vkx/twqhakNtA==}
-    engines: {node: '>=0.10.0'}
-    dependencies:
-      loose-envify: 1.4.0
-      object-assign: 4.1.1
-    dev: false
-
-  /scheduler/0.21.0-rc.0-next-fe905f152-20220107:
-    resolution: {integrity: sha512-+sY0WajWdMjoxbmHM8P6P1FKGw8sSVKKG/HthqTFQFPxVGbKLmV1BiFPaVF9gOyQWqmnLYSXJMN+4Bs5ZygsTw==}
-    dependencies:
-      loose-envify: 1.4.0
-      object-assign: 4.1.1
-    dev: false
