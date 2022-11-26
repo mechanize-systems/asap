@@ -30,8 +30,8 @@ export async function createTestProject(
       version: "0.1.0",
       dependencies: {
         "@mechanize/asap": `link:${asapRoot}`,
-        react: `rc`,
-        "react-dom": `rc`,
+        react: "18.2.0",
+        "react-dom": "18.2.0",
       },
     })
   );
