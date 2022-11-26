@@ -597,7 +597,10 @@ let serveCmd = Cmd.command({
     iface,
     xForwardedUser,
   }) => {
-    serve({ projectPath, basePath, env }, { port, iface, xForwardedUser });
+    serve(
+      { projectPath, basePath, env: env as AppEnv },
+      { port, iface, xForwardedUser }
+    );
   },
 });
 
@@ -608,7 +611,7 @@ let buildCmd = Cmd.command({
     ...appConfigArgs,
   },
   handler: async ({ projectPath = process.cwd(), env }) => {
-    let ok = await build({ projectPath, env });
+    let ok = await build({ projectPath, env: env as AppEnv });
     if (!ok) process.exit(1);
   },
 });
