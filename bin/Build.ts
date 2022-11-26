@@ -11,6 +11,7 @@ import * as esbuild from "esbuild";
 import { deferred } from "./PromiseUtil";
 import debug from "debug";
 import * as Logging from "./Logging";
+import { vanillaExtractPlugin } from "@vanilla-extract/esbuild-plugin";
 
 /** A collection of named entry points for the build. */
 export type EnrtyPoints = { [name: string]: string };
@@ -163,7 +164,7 @@ export function build<E extends EnrtyPoints>(
     current.reject(err);
   };
 
-  let plugins: esbuild.Plugin[] = [];
+  let plugins: esbuild.Plugin[] = [vanillaExtractPlugin()];
   if (typeof config.external === "function") {
     plugins.push({
       name: "external",
