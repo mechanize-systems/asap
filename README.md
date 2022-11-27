@@ -83,14 +83,19 @@ Let's add a few simple API methods, create `api.js` file also in the root of the
 ```js
 import * as api from "@mechanize/asap/api";
 
-export let routes = [
-  api.route("GET", "/todo", (req, res) => {
-    res.send([{ id: "1" }]);
-  }),
-  api.route("GET", "/todo/:id", (req, res) => {
-    res.send({ id: req.params.id });
-  }),
-];
+export let listTodos = api.endpoint({
+  path: "/todo",
+  handle() {
+    return [{ id: 1 }];
+  },
+});
+
+export let getTodo = api.endpoint({
+  path: "/todo/:id",
+  handle(params) {
+    return [{ id: params.id }];
+  },
+});
 ```
 
 Now we can serve the app:

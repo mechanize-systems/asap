@@ -17,6 +17,7 @@ import * as CmdFs from "cmd-ts/batteries/fs";
 import memoize from "memoize-weak";
 import sirv from "sirv";
 import debounce from "debounce";
+import * as Refine from "@recoiljs/refine";
 
 import * as Build from "./Build";
 import * as Workspace from "./Workspace";
@@ -105,6 +106,30 @@ async function createApp(config: AppConfig): Promise<App> {
     log("workspace", path.relative(process.cwd(), workspace.path));
   }
 
+  let apiEntryPoint = path.join(config.projectPath, "api");
+
+  let appApiEntryPointPlugin: esbuild.Plugin = {
+    name: "app-api-entry-point",
+    setup(build) {
+      build.onLoad(
+        {
+          filter: new RegExp(
+            "^" +
+              escapeStringRegexp(apiEntryPoint) +
+              "(.ts|.js|/index.ts|/index.js)$"
+          ),
+        },
+        async (_args) => {
+          let build = await buildApi.ready();
+          if (build == null) return { contents: "" };
+          let api = await loadAPI(app, build);
+          if (api instanceof Error) return { contents: "" };
+          return { contents: codegenApiSpecs(api) };
+        }
+      );
+    },
+  };
+
   let buildApp = Build.build({
     buildId: "app",
     projectPath: config.projectPath,
@@ -113,9 +138,8 @@ async function createApp(config: AppConfig): Promise<App> {
     },
     env: config.env,
     onBuild: () => info("app build ready"),
+    plugins: [appApiEntryPointPlugin],
   });
-
-  let apiEntryPoint = path.join(config.projectPath, "api");
 
   // This plugin tries to resolve an api entry point and if found nothing it
   // generates a synthetic empty module so that:
@@ -131,16 +155,7 @@ async function createApp(config: AppConfig): Promise<App> {
       build.onResolve(
         { filter: new RegExp("^" + escapeStringRegexp(apiEntryPoint) + "$") },
         async (args) => {
-          let suffixes = [
-            ".ts",
-            ".js",
-            ".tsx",
-            ".jsx",
-            "/index.ts",
-            "/index.js",
-            "/index.tsx",
-            "/index.jsx",
-          ];
+          let suffixes = [".ts", ".js", "/index.ts", "/index.js"];
           for (let suffix of suffixes) {
             let path = args.path + suffix;
             try {
@@ -189,7 +204,61 @@ async function createApp(config: AppConfig): Promise<App> {
     plugins: [apiEntryPointPlugin],
   });
 
-  return { buildApi, buildApp, config, basePath, workspace };
+  let app: App = { buildApi, buildApp, config, basePath, workspace };
+  return app;
+}
+
+type EndpointInfo<B extends {} = {}, P extends string = string> = {
+  name: string;
+  method: API.HTTPMethod;
+  route: Routing.Route<P>;
+  parseBody: (req: string) => B;
+  handle: (params: Routing.RouteParams<P> & B) => Promise<unknown>;
+};
+
+function getEndpointInfo(name: string, value: unknown): EndpointInfo | null {
+  if (
+    typeof value === "function" &&
+    value != null &&
+    "type" in value &&
+    "method" in value &&
+    "path" in value &&
+    "body" in value
+  ) {
+    let { method, path } = value;
+    path = path ?? `/${name}`;
+    let parseBody: EndpointInfo<{}, string>["parseBody"] = (_req) => ({});
+    if (value.body != null) {
+      let checker = Refine.object(
+        value.body as Readonly<{}>
+      ) as Refine.Checker<{}>;
+      parseBody = Refine.jsonParserEnforced(checker);
+    }
+    return {
+      name,
+      method: method as API.HTTPMethod,
+      parseBody,
+      route: Routing.route(path as string),
+      handle: value as any as EndpointInfo["handle"],
+    };
+  }
+  return null;
+}
+
+function codegenApiSpecs(api: LoadedAPI) {
+  let chunks: string[] = [`import * as ASAP from '@mechanize/asap';`];
+  for (let endpoint of api.endpoints) {
+    let { method, route } = endpoint;
+    let s = JSON.stringify;
+    chunks.push(
+      `export let ${endpoint.name} = (params) =>
+         ASAP.UNSAFE__call({method: ${s(method)}, route: ${s(route)}}, params);
+       ${endpoint.name}.method = ${s(method)};
+       ${endpoint.name}.route = ${s(route)};
+      `
+    );
+  }
+  return chunks.join("\n");
 }
 
 async function build(config: AppConfig) {
@@ -279,9 +348,9 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
     let api = await loadAPI(app, output);
     if (api instanceof Error) return res.sendStatus(500);
 
-    if (api.exports.onRequest != null) {
+    if (api.onRequest != null) {
       return api.handle(
-        api.exports.onRequest,
+        api.onRequest,
         undefined,
         req as any as API.Request,
         res,
@@ -367,8 +436,8 @@ let serveApi = async (
     return;
   }
 
-  if (api.exports.routes != null)
-    for (let route of api.exports.routes) {
+  if (api.routes.length > 0)
+    for (let route of api.routes) {
       if (route.method !== req.method) continue;
       let params = Routing.matches(route, url.pathname);
       if (params == null) continue;
@@ -379,11 +448,16 @@ let serveApi = async (
   res.end("404 NOT FOUND");
 };
 
+type APIExports = {
+  routes?: API.Routes;
+  onRequest?: API.Handle<void>;
+  [name: string]: API.Endpoint<unknown, {}> | unknown;
+};
+
 type LoadedAPI = {
-  exports: {
-    routes?: API.Routes;
-    onRequest?: API.Handle<void>;
-  };
+  routes: API.Routes;
+  onRequest: API.Handle<void> | null;
+  endpoints: EndpointInfo[];
   handle: <P>(
     handler: API.Handle<P>,
     params: P,
@@ -408,7 +482,7 @@ let loadAPI = memoize(
 
     let bundle = await fs.promises.readFile(bundlePath, "utf8");
 
-    let apiModule: { exports: LoadedAPI["exports"] } = {
+    let apiModule: { exports: APIExports } = {
       exports: {},
     };
 
@@ -448,6 +522,15 @@ let loadAPI = memoize(
       return new Error("error loading API bundle");
     }
 
+    let handleError = async (res: API.Response, err: any) => {
+      res.statusCode = 500;
+      res.end("500 INTERNAL SERVER ERROR");
+      Logging.error("while serving API request");
+      console.log(
+        await formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
+      );
+    };
+
     let handle = async <P>(
       handler: API.Handle<P>,
       params: P,
@@ -455,28 +538,62 @@ let loadAPI = memoize(
       res: API.Response,
       next: API.Next
     ) => {
-      let handleError = async (err: any) => {
-        res.statusCode = 500;
-        res.end("500 INTERNAL SERVER ERROR");
-        Logging.error("while serving API request");
-        console.log(
-          await formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
-        );
-      };
-
       try {
         // TODO: seems fishy...
         req.params = params;
         return await handler(req as API.Request<P>, res, async (err) => {
           if (err == null) return next(err);
-          handleError(err);
+          handleError(res, err);
         });
       } catch (err) {
-        handleError(err);
+        handleError(res, err);
       }
     };
 
-    return { exports: context.module.exports, handle };
+    let readBody = (req: API.Request<unknown>): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        let chunks: string[] = [];
+        let seenError = false;
+        req.on("data", (chunk) => {
+          chunks.push(chunk);
+        });
+        req.on("error", (err) => {
+          seenError = true;
+          reject(err);
+        });
+        req.on("end", () => {
+          if (!seenError) resolve(chunks.join(""));
+        });
+      });
+    };
+
+    let routes: API.Routes = context.module.exports.routes ?? [];
+
+    let endpoints: EndpointInfo[] = [];
+    for (let name in context.module.exports) {
+      const endpoint = getEndpointInfo(name, context.module.exports[name]);
+      if (endpoint == null) continue;
+      endpoints.push(endpoint);
+      routes.push({
+        ...endpoint.route,
+        method: endpoint.method,
+        async handle(req, res) {
+          let data = await readBody(req);
+          let body = endpoint.parseBody(data);
+          let out =
+            (await endpoint.handle({ ...req.params, ...body })) ?? null;
+          res.setHeader("Content-Type", "application/json");
+          res.send(JSON.stringify(out ?? null));
+        },
+      });
+    }
+
+    return {
+      routes,
+      endpoints,
+      handle,
+      onRequest: context.module.exports.onRequest ?? null,
+    };
   }
 );
 

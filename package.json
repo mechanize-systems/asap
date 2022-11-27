@@ -50,6 +50,7 @@
     "word-wrap": "^1.2.3"
   },
   "dependencies": {
+    "@recoiljs/refine": "^0.1.1",
     "esbuild": "^0.14.54",
     "fb-watchman": "^2.0.1",
     "regexparam": "^2.0.0"

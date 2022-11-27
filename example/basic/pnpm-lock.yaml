@@ -2,6 +2,14 @@ lockfileVersion: 5.4
 
 specifiers:
   '@mechanize/asap': link:../../
+  memoize-weak: ^1.0.2
 
 dependencies:
   '@mechanize/asap': link:../..
+  memoize-weak: 1.0.2
+
+packages:
+
+  /memoize-weak/1.0.2:
+    resolution: {integrity: sha512-gj39xkrjEw7nCn4nJ1M5ms6+MyMlyiGmttzsqAUsAKn6bYKwuTHh/AO3cKPF8IBrTIYTxb0wWXFs3E//Y8VoWQ==}
+    dev: false

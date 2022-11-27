@@ -2,7 +2,8 @@
   "name": "asap-example-basic",
   "version": "1.0.0",
   "dependencies": {
-    "@mechanize/asap": "link:../../"
+    "@mechanize/asap": "link:../../",
+    "memoize-weak": "^1.0.2"
   },
   "peerDependencies": {
     "react": "^18.0.0",

@@ -1,13 +1,21 @@
 import * as api from "@mechanize/asap/api";
+import * as Refine from "@recoiljs/refine";
 
-export let routes = [
-  api.route("GET", "/todo", (_req, res) => {
-    res.send([{ id: 1 }]);
-  }),
-  api.route("GET", "/todo/:id", (req, res) => {
-    res.send({ id: req.params.id });
-  }),
-  api.route("GET", "/error", (_req, _res) => {
-    throw new Error("this is expected!");
-  }),
-];
+export let settings = api.endpoint({
+  handle: () => {
+    return {
+      theme: "dark",
+    };
+  },
+});
+
+export let hello = api.endpoint({
+  method: "POST",
+  path: "/hello/:greeting",
+  body: {
+    name: Refine.string(),
+  },
+  handle: (params) => {
+    return `${params.greeting}, ${params.name}`;
+  },
+});

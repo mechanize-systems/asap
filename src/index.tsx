@@ -5,6 +5,7 @@ import * as ReactDOM from "react-dom/client";
 import * as React from "react";
 import * as Router from "./Router";
 import * as Routing from "./Routing";
+import type * as API from "./api";
 
 // This is what's being injected by the server.
 declare var ASAPConfig: Config;
@@ -203,4 +204,22 @@ function AppOnPageNotFoundDefault(_props: AppOnPageNotFoundProps) {
       404 PAGE NOT FOUND...
     </div>
   );
+}
+
+export async function UNSAFE__call<R, B, P extends string>(
+  endpoint: { method: API.HTTPMethod; route: Routing.Route<P> },
+  params: Routing.RouteParams<P> & B
+): Promise<R> {
+  let basePath = getConfig().basePath;
+  let path = `${basePath}/_api${Routing.href(endpoint.route, params)}`;
+  let resp: Promise<Response>;
+  if (endpoint.method === "GET") {
+    resp = fetch(path);
+  } else if (endpoint.method === "POST") {
+    resp = fetch(path, { method: "POST", body: JSON.stringify(params) });
+  } else {
+    throw new Error(`unknown HTTP method ${endpoint.method}`);
+  }
+  let result = await (await resp).text();
+  return JSON.parse(result);
 }
