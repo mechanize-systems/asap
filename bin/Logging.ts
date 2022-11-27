@@ -28,26 +28,30 @@ function makeError(message: string, locs: CodeLoc[]): string {
   let lines = [];
   lines.push(`  ${chalk.redBright("asap:error")} ${wrapMessage(message, 13)}`);
   for (let loc of locs) {
-    let code = fs.readFileSync(loc.path, "utf8");
     let message = wrapMessage(loc.message, loc.column + 8);
     let filePath = path.relative(process.cwd(), loc.path);
     lines.push(`  At ${filePath}:${loc.line}:${loc.column}`);
-    lines.push(
-      codeFrame(
-        code,
-        [
+    if (fs.existsSync(loc.path)) {
+      let code = fs.readFileSync(loc.path, "utf8");
+      lines.push(
+        codeFrame(
+          code,
+          [
+            {
+              message,
+              start: { line: loc.line, column: loc.column },
+              end: { line: loc.line, column: loc.column },
+            },
+          ],
           {
-            message,
-            start: { line: loc.line, column: loc.column },
-            end: { line: loc.line, column: loc.column },
-          },
-        ],
-        {
-          useColor: true,
-          terminalWidth,
-        }
-      )
-    );
+            useColor: true,
+            terminalWidth,
+          }
+        )
+      );
+    } else {
+      lines.push(message);
+    }
   }
   return lines.join("\n");
 }

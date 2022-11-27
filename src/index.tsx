@@ -9,6 +9,8 @@ import type * as API from "./api";
 
 // This is what's being injected by the server.
 declare var ASAPConfig: Config;
+declare var ASAPBootConfig: BootConfig;
+declare var ASAPEndpoints: { [name: string]: { handle: Function } };
 
 export let route = Router.route;
 
@@ -72,16 +74,16 @@ export type AppOnPageNotFoundProps = {};
 
 /** Boot application with routes. */
 export function boot(config: AppConfig) {
-  window.addEventListener("DOMContentLoaded", async () => {
-    // TODO: error handling
-    let element = document.getElementById("asap");
-    let root = ReactDOM.createRoot(element!);
-    root.render(
-      <React.StrictMode>
-        <App config={config} />
-      </React.StrictMode>
-    );
-  });
+  if (typeof window === "undefined") return;
+  ReactDOM.hydrateRoot(document, render(config, ASAPBootConfig));
+}
+
+export function render(config: AppConfig, boot: BootConfig) {
+  return (
+    <React.StrictMode>
+      <App config={config} boot={boot} />
+    </React.StrictMode>
+  );
 }
 
 export type LinkProps<P extends string> = {
@@ -120,13 +122,46 @@ export let Link = React.forwardRef(
   }
 );
 
-type AppProps = {
+export type BootConfig = {
+  basePath: string;
+  initialPath?: string;
+  js: string;
+  css: string | null;
+};
+export type AppProps = {
   config: AppConfig;
+  boot: BootConfig;
 };
 
-function App({ config }: AppProps) {
+export function App(props: AppProps) {
+  let js = <script async defer type="module" src={props.boot.js} />;
+  let css =
+    props.boot.css != null ? (
+      <link rel="stylesheet" href={props.boot.css} />
+    ) : null;
+  let boot = `
+    window.ASAPConfig = ${JSON.stringify({ basePath: props.boot.basePath })};
+    window.ASAPBootConfig = ${JSON.stringify(props.boot)};
+  `;
+  return (
+    <html>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: boot }} />
+        {js}
+        {css}
+      </head>
+      <body>
+        <Content {...props} />
+      </body>
+    </html>
+  );
+}
+
+function Content({ config, boot }: AppProps) {
+  let asapConfig = getConfig();
   let [isNavigating, path, router] = Router.useLocation({
-    basePath: getConfig().basePath,
+    basePath: asapConfig.basePath,
+    initialPath: boot.initialPath,
   });
   let [route, params] = React.useMemo(
     () => match(config.routes, path),
@@ -207,19 +242,26 @@ function AppOnPageNotFoundDefault(_props: AppOnPageNotFoundProps) {
 }
 
 export async function UNSAFE__call<R, B, P extends string>(
-  endpoint: { method: API.HTTPMethod; route: Routing.Route<P> },
+  endpoint: { name: string; method: API.HTTPMethod; route: Routing.Route<P> },
   params: Routing.RouteParams<P> & B
 ): Promise<R> {
-  let basePath = getConfig().basePath;
-  let path = `${basePath}/_api${Routing.href(endpoint.route, params)}`;
-  let resp: Promise<Response>;
-  if (endpoint.method === "GET") {
-    resp = fetch(path);
-  } else if (endpoint.method === "POST") {
-    resp = fetch(path, { method: "POST", body: JSON.stringify(params) });
+  if (typeof window !== "undefined") {
+    let basePath = getConfig().basePath;
+    let path = `${basePath}/_api${Routing.href(endpoint.route, params)}`;
+    let resp: Promise<Response>;
+    if (endpoint.method === "GET") {
+      resp = fetch(path);
+    } else if (endpoint.method === "POST") {
+      resp = fetch(path, { method: "POST", body: JSON.stringify(params) });
+    } else {
+      throw new Error(`unknown HTTP method ${endpoint.method}`);
+    }
+    let result = await (await resp).text();
+    return JSON.parse(result);
+  } else if (typeof ASAPEndpoints !== "undefined") {
+    let e = ASAPEndpoints[endpoint.name]!;
+    return e.handle!(params);
   } else {
-    throw new Error(`unknown HTTP method ${endpoint.method}`);
+    throw new Error(`unable to call endpoint ${name}: environment is broken`);
   }
-  let result = await (await resp).text();
-  return JSON.parse(result);
 }

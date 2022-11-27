@@ -4,7 +4,6 @@ import * as ASAP from "@mechanize/asap";
 
 export let routes = {
   index: ASAP.route("/", async () => {
-    await randomSleep();
     return import("./IndexPage");
   }),
   hello: ASAP.route("/hello/:name", async () => {
@@ -28,4 +27,4 @@ function AppChrome(props: ASAP.AppChromeProps) {
   );
 }
 
-ASAP.boot({ routes, AppChrome });
+export let config: ASAP.AppConfig = { routes, AppChrome };

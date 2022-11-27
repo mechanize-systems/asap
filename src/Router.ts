@@ -53,11 +53,14 @@ const eventPushState = "pushState";
 const eventReplaceState = "replaceState";
 const events = [eventPopstate, eventPushState, eventReplaceState];
 
-export function useLocation({ basePath = "" }: { basePath?: string } = {}) {
+export function useLocation({
+  basePath = "",
+  initialPath,
+}: { basePath?: string; initialPath?: string | undefined } = {}) {
   let [isNavigating, startTransition] = React.useTransition();
   const [{ path, search }, update] = React.useState(() => ({
-    path: currentPathname(basePath),
-    search: location.search,
+    path: initialPath != null ? initialPath : currentPathname(basePath),
+    search: typeof location !== "undefined" ? location.search : "",
   }));
   const prevHash = React.useRef(path + search);
 

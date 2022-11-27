@@ -10,7 +10,6 @@ import * as path from "path";
 import * as tinyhttp from "@tinyhttp/app";
 import * as vm from "vm";
 import * as fs from "fs";
-import jsesc from "jsesc";
 import debug from "debug";
 import * as Cmd from "cmd-ts";
 import * as CmdFs from "cmd-ts/batteries/fs";
@@ -18,6 +17,8 @@ import memoize from "memoize-weak";
 import sirv from "sirv";
 import debounce from "debounce";
 import * as Refine from "@recoiljs/refine";
+import type * as ReactDOMServer from "react-dom/server";
+import type * as ASAP from "../src/index";
 
 import * as Build from "./Build";
 import * as Workspace from "./Workspace";
@@ -78,6 +79,7 @@ type App = {
   basePath: string;
   buildApi: Build.BuildService<{ __main__: string }>;
   buildApp: Build.BuildService<{ __main__: string }>;
+  buildAppForSsr: Build.BuildService<{ __main__: string }>;
 };
 
 let info = debug("asap:info");
@@ -86,6 +88,29 @@ let log = debug("asap:main");
 function fatal(msg: string): never {
   Logging.error(msg);
   process.exit(1);
+}
+
+function makeEntryPlugin(
+  name: string,
+  path: string,
+  contents: string
+): readonly [string, esbuild.Plugin] {
+  let entry = `__${name}__`;
+  let filter = new RegExp(`^${escapeStringRegexp(entry)}\$`);
+  return [
+    entry,
+    {
+      name,
+      setup(build) {
+        build.onResolve({ filter }, async (args) => {
+          return { namespace: name, path: args.path };
+        });
+        build.onLoad({ filter, namespace: name }, (_args) => {
+          return { resolveDir: path, contents };
+        });
+      },
+    },
+  ] as const;
 }
 
 async function createApp(config: AppConfig): Promise<App> {
@@ -130,15 +155,44 @@ async function createApp(config: AppConfig): Promise<App> {
     },
   };
 
+  let [appEntry, appEntryPlugin] = makeEntryPlugin(
+    "appEntry",
+    config.projectPath,
+    `
+    import * as ASAP from '@mechanize/asap';
+    import {config} from './app';
+    ASAP.boot(config);
+    `
+  );
+
   let buildApp = Build.build({
     buildId: "app",
     projectPath: config.projectPath,
-    entryPoints: {
-      __main__: path.join(config.projectPath, "app"),
-    },
+    entryPoints: { __main__: appEntry },
     env: config.env,
     onBuild: () => info("app build ready"),
-    plugins: [appApiEntryPointPlugin],
+    plugins: [appApiEntryPointPlugin, appEntryPlugin],
+  });
+
+  let [ssrEntry, ssrEntryPlugin] = makeEntryPlugin(
+    "ssrEntry",
+    config.projectPath,
+    `
+    import {config} from './app';
+    import * as ASAP from '@mechanize/asap';
+    import * as ReactDOMServer from 'react-dom/server';
+    export {ReactDOMServer, ASAP, config};
+    `
+  );
+
+  let buildAppForSsr = Build.build({
+    buildId: "app-ssr",
+    platform: "node",
+    projectPath: config.projectPath,
+    entryPoints: { __main__: ssrEntry },
+    env: config.env,
+    onBuild: () => info("app-ssr build ready"),
+    plugins: [appApiEntryPointPlugin, ssrEntryPlugin],
   });
 
   // This plugin tries to resolve an api entry point and if found nothing it
@@ -204,7 +258,14 @@ async function createApp(config: AppConfig): Promise<App> {
     plugins: [apiEntryPointPlugin],
   });
 
-  let app: App = { buildApi, buildApp, config, basePath, workspace };
+  let app: App = {
+    buildApi,
+    buildApp,
+    buildAppForSsr,
+    config,
+    basePath,
+    workspace,
+  };
   return app;
 }
 
@@ -247,12 +308,17 @@ function getEndpointInfo(name: string, value: unknown): EndpointInfo | null {
 
 function codegenApiSpecs(api: LoadedAPI) {
   let chunks: string[] = [`import * as ASAP from '@mechanize/asap';`];
-  for (let endpoint of api.endpoints) {
+  for (let name in api.endpoints) {
+    let endpoint = api.endpoints[name]!;
     let { method, route } = endpoint;
     let s = JSON.stringify;
     chunks.push(
       `export let ${endpoint.name} = (params) =>
-         ASAP.UNSAFE__call({method: ${s(method)}, route: ${s(route)}}, params);
+         ASAP.UNSAFE__call(
+           {name: ${s(endpoint.name)}, method: ${s(method)}, route: ${s(
+        route
+      )}},
+           params);
        ${endpoint.name}.method = ${s(method)};
        ${endpoint.name}.route = ${s(route)};
       `
@@ -269,12 +335,21 @@ async function build(config: AppConfig) {
 
   let app = await createApp(config);
 
-  await Promise.all([app.buildApp.start(), app.buildApi.start()]);
+  await Promise.all([
+    app.buildApp.start(),
+    app.buildAppForSsr.start(),
+    app.buildApi.start(),
+  ]);
   let [appOk, apiOk] = await Promise.all([
     app.buildApp.ready(),
+    app.buildAppForSsr.ready(),
     app.buildApi.ready(),
   ]);
-  await Promise.all([app.buildApp.stop(), app.buildApi.stop()]);
+  await Promise.all([
+    app.buildApp.stop(),
+    app.buildAppForSsr.stop(),
+    app.buildApi.stop(),
+  ]);
   return appOk && apiOk;
 }
 
@@ -294,11 +369,13 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
     let clock = await watch.clock(watchPath);
 
     await app.buildApp.start();
+    await app.buildAppForSsr.start();
     await app.buildApi.start();
 
     let onChange = debounce(() => {
       info("changes detected, rebuilding");
       app.buildApp.rebuild();
+      app.buildAppForSsr.rebuild();
       app.buildApi.rebuild();
     }, 300);
 
@@ -309,6 +386,7 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
   if (env === "production") {
     let [appOutput, apiOutput] = await Promise.all([
       app.buildApp.ready(),
+      app.buildAppForSsr.ready(),
       app.buildApi.ready(),
     ]);
     if (appOutput == null) {
@@ -378,41 +456,71 @@ async function serve(config: AppConfig, serveConfig: ServeConfig) {
 
 let serveApp = async (
   app: App,
-  _req: tinyhttp.Request,
+  req: tinyhttp.Request,
   res: tinyhttp.Response
 ) => {
-  let outs = await app.buildApp.ready();
-  let js = outs?.__main__.js?.relativePath ?? "__buildError.js";
-  let css = outs?.__main__.css?.relativePath;
-  let config = jsesc(
-    {
-      basePath: app.basePath,
+  const [out, ssr] = await Promise.all([app.buildApp.ready(), getSSR(app)]);
+  if (ssr instanceof Error) {
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "text/html");
+    res.end(`
+      <!doctype html>
+      <html>
+      <h1>ERROR: SSR is not available</h1>
+      </html>
+    `);
+    return;
+  }
+  let js = out?.__main__.js?.relativePath ?? "__buildError.js";
+  let css = out?.__main__.css?.relativePath;
+  let { page, ReactDOMServer } = await ssr.render({
+    basePath: app.basePath,
+    initialPath: req.path,
+    js: `${app.basePath}/__static/${js}`,
+    css: css != null ? `${app.basePath}/__static/${css}` : null,
+  });
+  if (page == null) {
+    res.statusCode = 404;
+    res.setHeader("Content-Type", "text/html");
+    res.end(`
+      <!doctype html>
+      <html>
+      <h1>404 not found</h1>
+      </html>
+    `);
+    return;
+  }
+  let didError = false;
+  let stream = ReactDOMServer.renderToPipeableStream(page, {
+    onShellReady() {
+      res.statusCode = didError ? 500 : 200;
+      res.setHeader("Content-type", "text/html");
+      stream.pipe(res);
     },
-    { json: true, isScriptContext: true }
-  );
+    onShellError(_error: unknown) {
+      res.statusCode = 500;
+      res.end(`
+        <!doctype html>
+        <html>
+        <h1>ERROR: SSR error</h1>
+        </html>
+      `);
+    },
+    onAllReady() {
+      // If you don't want streaming, use this instead of onShellReady.
+      // This will fire after the entire page content is ready.
+      // You can use this for crawlers or static generation.
+      // res.statusCode = didError ? 500 : 200;
+      // res.setHeader('Content-type', 'text/html');
+      // stream.pipe(res);
+    },
+    onError(err: unknown) {
+      didError = true;
+      ssr.formatError(err).then((err) => console.error(err));
+    },
+  });
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/html");
-  res.end(
-    `
-    <!doctype html>
-    <html>
-      <head>
-        ${
-          css
-            ? `<link rel="stylesheet" href="${app.basePath}/__static/${css}" />`
-            : ""
-        }
-      </head>
-      <body>
-        <div id="asap"></div>
-        <script>
-          window.ASAPConfig = ${config};
-        </script>
-        <script type="module" src="${app.basePath}/__static/${js}"></script>
-      </body>
-    </html>
-      `
-  );
 };
 
 let serveApi = async (
@@ -457,7 +565,7 @@ type APIExports = {
 type LoadedAPI = {
   routes: API.Routes;
   onRequest: API.Handle<void> | null;
-  endpoints: EndpointInfo[];
+  endpoints: { [name: string]: EndpointInfo };
   handle: <P>(
     handler: API.Handle<P>,
     params: P,
@@ -466,6 +574,107 @@ type LoadedAPI = {
     next: API.Next
   ) => Promise<unknown>;
 };
+
+type SSR = {
+  render: (config: ASAP.BootConfig) => Promise<{
+    ReactDOMServer: typeof ReactDOMServer;
+    page: React.ReactNode | null;
+  }>;
+  formatError: (error: unknown) => Promise<string>;
+};
+
+let loadSSR = memoize(
+  async (
+    app: App,
+    endpoints: LoadedAPI["endpoints"],
+    output: Build.BuildOutput<{ __main__: string }>
+  ): Promise<SSR | Error> => {
+    log("loading app-ssr bundle");
+
+    const bundlePath = output.__main__.js?.path;
+    if (bundlePath == null) {
+      Logging.error("no app-ssr bundle found");
+      return new Error("no app-ssr bundle found");
+    }
+
+    let bundle = await fs.promises.readFile(bundlePath, "utf8");
+    let filename = "asap://app-ssr";
+    let script = new vm.Script(bundle, { filename });
+
+    async function evalBundle() {
+      let thisModule: {
+        exports: {
+          ReactDOMServer: typeof ReactDOMServer;
+          ASAP: typeof ASAP;
+          config: ASAP.AppConfig;
+        };
+      } = { exports: {} as any };
+      let thisRequire = module.createRequire(
+        path.join(app.config.projectPath, "api")
+      );
+
+      let context = {
+        ASAPConfig: { basePath: app.basePath },
+        ASAPEndpoints: endpoints,
+        module: thisModule,
+        require: thisRequire,
+        Buffer,
+        process: {
+          ...process,
+          env: {
+            ...process.env,
+            ASAP__BASE_PATH: app.basePath,
+          },
+        },
+        console,
+        setTimeout,
+        setInterval,
+        setImmediate,
+        clearTimeout,
+        clearInterval,
+        clearImmediate,
+      };
+      vm.createContext(context);
+      try {
+        script.runInContext(context);
+      } catch (err: any) {
+        Logging.error("while loading API code");
+        console.log(
+          await formatBundleErrorStackTrace(
+            bundlePath!,
+            bundle,
+            err as Error,
+            filename
+          )
+        );
+        return new Error("error loading API bundle");
+      }
+      return context;
+    }
+
+    let render: SSR["render"] = async (boot: ASAP.BootConfig) => {
+      let context = await evalBundle();
+      if (context instanceof Error) throw context;
+      let { ASAP, config } = context.module.exports;
+      let page = ASAP.render(config, boot);
+      return { page, ReactDOMServer: context.module.exports.ReactDOMServer };
+    };
+
+    let formatError: SSR["formatError"] = (err) => {
+      return formatBundleErrorStackTrace(
+        bundlePath,
+        bundle,
+        err as Error,
+        filename
+      );
+    };
+
+    return {
+      render,
+      formatError,
+    };
+  }
+);
 
 let loadAPI = memoize(
   async (
@@ -511,13 +720,19 @@ let loadAPI = memoize(
       clearImmediate,
     };
     vm.createContext(context);
+    let filename = "asap://api";
     try {
-      let script = new vm.Script(bundle, { filename: "asap://api" });
+      let script = new vm.Script(bundle, { filename });
       script.runInContext(context);
     } catch (err: any) {
       Logging.error("while loading API code");
       console.log(
-        await formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
+        await formatBundleErrorStackTrace(
+          bundlePath,
+          bundle,
+          err as Error,
+          filename
+        )
       );
       return new Error("error loading API bundle");
     }
@@ -527,7 +742,12 @@ let loadAPI = memoize(
       res.end("500 INTERNAL SERVER ERROR");
       Logging.error("while serving API request");
       console.log(
-        await formatBundleErrorStackTrace(bundlePath, bundle, err as Error)
+        await formatBundleErrorStackTrace(
+          bundlePath,
+          bundle,
+          err as Error,
+          filename
+        )
       );
     };
 
@@ -569,11 +789,11 @@ let loadAPI = memoize(
 
     let routes: API.Routes = context.module.exports.routes ?? [];
 
-    let endpoints: EndpointInfo[] = [];
+    let endpoints: LoadedAPI["endpoints"] = {};
     for (let name in context.module.exports) {
       const endpoint = getEndpointInfo(name, context.module.exports[name]);
       if (endpoint == null) continue;
-      endpoints.push(endpoint);
+      endpoints[name] = endpoint;
       routes.push({
         ...endpoint.route,
         method: endpoint.method,
@@ -597,6 +817,21 @@ let loadAPI = memoize(
   }
 );
 
+let getAPI = async (app: App) => {
+  let build = await app.buildApi.ready();
+  if (build == null) return null;
+  let api = await loadAPI(app, build);
+  if (api instanceof Error) throw new Error("API is not available");
+  return api;
+};
+
+let getSSR = async (app: App) => {
+  let build = await app.buildAppForSsr.ready();
+  if (build == null) return new Error("SSR is not available");
+  let api = await getAPI(app);
+  return loadSSR(app, api?.endpoints ?? {}, build);
+};
+
 async function extractSourceMap(bundlePath: string, bundle: string) {
   let conv = ConvertSourceMap.fromSource(bundle);
   let rawSourceMap = conv?.toObject() as SourceMap.RawSourceMap | null;
@@ -612,7 +847,8 @@ async function extractSourceMap(bundlePath: string, bundle: string) {
 async function formatBundleErrorStackTrace(
   bundlePath: string,
   bundle: string,
-  error: Error
+  error: Error,
+  fileName: string
 ): Promise<string> {
   let sourceMap = await extractSourceMap(bundlePath, bundle);
   if (sourceMap == null) return "  " + String(error.stack);
@@ -621,7 +857,7 @@ async function formatBundleErrorStackTrace(
   let items: string[] = [`  Error: ${error.message}`];
   let cwd = process.cwd();
   for (let frame of stack) {
-    if (frame.fileName !== "asap://api") continue;
+    if (frame.fileName !== fileName) continue;
     if (frame.lineNumber == null || frame.columnNumber == null) continue;
     let { line, column, source } = consumer.originalPositionFor({
       line: frame.lineNumber!,
