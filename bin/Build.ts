@@ -8,10 +8,14 @@ import * as crypto from "crypto";
 import * as path from "path";
 import * as fs from "fs";
 import * as esbuild from "esbuild";
-import { deferred } from "./PromiseUtil";
+import * as SourceMap from "source-map";
+import * as ErrorStackParser from "error-stack-parser";
+import * as ConvertSourceMap from "convert-source-map";
+import escapeStringRegexp from "escape-string-regexp";
 import debug from "debug";
-import * as Logging from "./Logging";
 import { vanillaExtractPlugin } from "@vanilla-extract/esbuild-plugin";
+import { deferred } from "./PromiseUtil";
+import * as Logging from "./Logging";
 
 /** A collection of named entry points for the build. */
 export type EnrtyPoints = { [name: string]: string };
@@ -337,3 +341,71 @@ function getBuildOutput<E extends EnrtyPoints>(
 }
 
 let PARSE_OUTFILE_RE = /^([a-z0-9A-Z_]+)-[A-Z0-9]+\.(js|css)$/;
+
+export function makeEntryPlugin(
+  name: string,
+  path: string,
+  contents: string
+): readonly [string, esbuild.Plugin] {
+  let entry = `__${name}__`;
+  let filter = new RegExp(`^${escapeStringRegexp(entry)}\$`);
+  return [
+    entry,
+    {
+      name,
+      setup(build) {
+        build.onResolve({ filter }, async (args) => {
+          return { namespace: name, path: args.path };
+        });
+        build.onLoad({ filter, namespace: name }, (_args) => {
+          return { resolveDir: path, contents };
+        });
+      },
+    },
+  ] as const;
+}
+
+async function extractSourceMap(bundlePath: string, bundle: string) {
+  let conv = ConvertSourceMap.fromSource(bundle);
+  let rawSourceMap = conv?.toObject() as SourceMap.RawSourceMap | null;
+  if (rawSourceMap != null) return rawSourceMap;
+  try {
+    let data = await fs.promises.readFile(bundlePath + ".map", "utf8");
+    return JSON.parse(data) as SourceMap.RawSourceMap;
+  } catch {
+    return null;
+  }
+}
+
+export async function formatBundleErrorStackTrace(
+  bundlePath: string,
+  bundle: string,
+  error: Error,
+  fileName: string
+): Promise<string> {
+  let sourceMap = await extractSourceMap(bundlePath, bundle);
+  if (sourceMap == null) return "  " + String(error.stack);
+  let consumer = new SourceMap.SourceMapConsumer(sourceMap);
+  let stack = ErrorStackParser.parse(error);
+  let items: string[] = [`  Error: ${error.message}`];
+  let cwd = process.cwd();
+  for (let frame of stack) {
+    if (frame.fileName !== fileName) continue;
+    if (frame.lineNumber == null || frame.columnNumber == null) continue;
+    let { line, column, source } = consumer.originalPositionFor({
+      line: frame.lineNumber!,
+      column: frame.columnNumber!,
+    });
+    if (line == null || column == null || source == null) continue;
+    source = path.relative(
+      cwd,
+      path.resolve(path.dirname(bundlePath), source)
+    );
+    let item = `    at ${source}:${line}:${column}`;
+    if (frame.functionName != null) {
+      item = `${item} (${frame.functionName})`;
+    }
+    items.push(item);
+  }
+  return items.join("\n");
+}
