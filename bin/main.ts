@@ -192,7 +192,7 @@ let serveApp = async (
   }
   let js = out?.__main__.js?.relativePath ?? "__buildError.js";
   let css = out?.__main__.css?.relativePath;
-  let { page, ReactDOMServer } = await ssr.render({
+  let { page, ReactDOMServer, endpointsCache } = await ssr.render({
     basePath: app.basePath,
     initialPath: req.path,
     js: `${app.basePath}/__static/${js}`,
@@ -226,12 +226,11 @@ let serveApp = async (
       `);
     },
     onAllReady() {
-      // If you don't want streaming, use this instead of onShellReady.
-      // This will fire after the entire page content is ready.
-      // You can use this for crawlers or static generation.
-      // res.statusCode = didError ? 500 : 200;
-      // res.setHeader('Content-type', 'text/html');
-      // stream.pipe(res);
+      res.write(
+        `<script>
+           window.ASAPEndpointsCache = ${JSON.stringify(endpointsCache)};
+         </script>`
+      );
     },
     onError(err: unknown) {
       didError = true;

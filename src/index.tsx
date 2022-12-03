@@ -11,6 +11,9 @@ import type * as API from "./api";
 declare var ASAPConfig: Config;
 declare var ASAPBootConfig: BootConfig;
 declare var ASAPEndpoints: { [name: string]: { handle: Function } };
+declare var ASAPEndpointsCache: {
+  [path: string]: { used: number; result: unknown };
+};
 
 export let route = Router.route;
 
@@ -246,21 +249,46 @@ export async function UNSAFE__call<R, B, P extends string>(
   params: Routing.RouteParams<P> & B
 ): Promise<R> {
   if (typeof window !== "undefined") {
-    let basePath = getConfig().basePath;
+    let { basePath } = getConfig();
     let path = `${basePath}/_api${Routing.href(endpoint.route, params)}`;
-    let resp: Promise<Response>;
     if (endpoint.method === "GET") {
-      resp = fetch(path);
+      if (path in ASAPEndpointsCache) {
+        let record = ASAPEndpointsCache[path]!;
+        if (record.used === 1) {
+          delete ASAPEndpointsCache[path];
+        } else {
+          record.used -= 1;
+        }
+        return record.result as R;
+      }
+      let resp: Promise<Response> = fetch(path);
+      return (await resp).json();
     } else if (endpoint.method === "POST") {
-      resp = fetch(path, { method: "POST", body: JSON.stringify(params) });
+      let resp: Promise<Response> = fetch(path, {
+        method: "POST",
+        body: JSON.stringify(params),
+      });
+      return (await resp).json();
     } else {
       throw new Error(`unknown HTTP method ${endpoint.method}`);
     }
-    let result = await (await resp).text();
-    return JSON.parse(result);
   } else if (typeof ASAPEndpoints !== "undefined") {
     let e = ASAPEndpoints[endpoint.name]!;
-    return e.handle!(params);
+    if (endpoint.method === "GET") {
+      let { basePath } = getConfig();
+      let path = `${basePath}/_api${Routing.href(endpoint.route, params)}`;
+      if (path in ASAPEndpointsCache) {
+        let record = ASAPEndpointsCache[path]!;
+        record.used += 1;
+        return record.result as R;
+      } else {
+        let result = await e.handle!(params);
+        ASAPEndpointsCache[path] = { used: 1, result };
+        return result;
+      }
+    } else {
+      return e.handle!(params);
+    }
   } else {
     throw new Error(`unable to call endpoint ${name}: environment is broken`);
   }

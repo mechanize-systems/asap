@@ -18,6 +18,7 @@ type SSR = {
   render: (config: ASAP.BootConfig) => Promise<{
     ReactDOMServer: typeof ReactDOMServer;
     page: React.ReactNode | null;
+    endpointsCache: { [path: string]: unknown };
   }>;
   formatError: (error: unknown) => Promise<string>;
 };
@@ -52,9 +53,12 @@ export let load = memoize(
         path.join(app.config.projectPath, "api")
       );
 
+      let endpointsCache: { [name: string]: unknown } = {};
+
       let context = {
         ASAPConfig: { basePath: app.basePath },
         ASAPEndpoints: endpoints,
+        ASAPEndpointsCache: endpointsCache,
         module: thisModule,
         require: thisRequire,
         Buffer,
@@ -88,15 +92,20 @@ export let load = memoize(
         );
         return new Error("error loading API bundle");
       }
-      return context;
+      return [context, endpointsCache] as const;
     }
 
     let render: SSR["render"] = async (boot: ASAP.BootConfig) => {
-      let context = await evalBundle();
-      if (context instanceof Error) throw context;
+      let res = await evalBundle();
+      if (res instanceof Error) throw res;
+      let [context, endpointsCache] = res;
       let { ASAP, config } = context.module.exports;
       let page = ASAP.render(config, boot);
-      return { page, ReactDOMServer: context.module.exports.ReactDOMServer };
+      return {
+        page,
+        endpointsCache,
+        ReactDOMServer: context.module.exports.ReactDOMServer,
+      };
     };
 
     let formatError: SSR["formatError"] = (err) => {
