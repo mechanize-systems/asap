@@ -15,11 +15,14 @@ import * as Logging from "./Logging";
 export let log = debug("asap:ssr");
 
 type SSR = {
-  render: (config: ASAP.BootConfig) => Promise<{
-    ReactDOMServer: typeof ReactDOMServer;
-    page: React.ReactNode | null;
-    endpointsCache: { [path: string]: unknown };
-  }>;
+  render: (config: ASAP.BootConfig) => Promise<
+    | {
+        ReactDOMServer: typeof ReactDOMServer;
+        page: React.ReactNode | null;
+        endpointsCache: { [path: string]: unknown };
+      }
+    | Error
+  >;
   formatError: (error: unknown) => Promise<string>;
 };
 
@@ -76,6 +79,7 @@ export let load = memoize(
         clearTimeout,
         clearInterval,
         clearImmediate,
+        URLSearchParams,
       };
       vm.createContext(context);
       try {
@@ -90,14 +94,14 @@ export let load = memoize(
             filename
           )
         );
-        return new Error("error loading API bundle");
+        return new Error("error loading SSR bundle");
       }
       return [context, endpointsCache] as const;
     }
 
     let render: SSR["render"] = async (boot: ASAP.BootConfig) => {
       let res = await evalBundle();
-      if (res instanceof Error) throw res;
+      if (res instanceof Error) return res;
       let [context, endpointsCache] = res;
       let { ASAP, config } = context.module.exports;
       let page = ASAP.render(config, boot);

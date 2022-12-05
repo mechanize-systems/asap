@@ -49,17 +49,17 @@ export type EndpointSpec<R, B extends {}, P extends string = string> = {
   method?: HTTPMethod;
   path?: P;
   doc?: string | null;
-  body?: B;
+  params?: B;
   handle: (params: EndpointParams<B, P>) => R;
 };
 
 export type Endpoint<R, B extends {}, P extends string = string> = {
-  (params: EndpointParams<B, P>): Promise<R>;
+  (params: EndpointParams<B, P>): Promise<Awaited<R>>;
   type: "Endpoint";
   method: HTTPMethod;
   path: P | null;
   doc: string | null;
-  body: B;
+  params: B;
 };
 
 export function endpoint<R, B extends {}, P extends string>(
@@ -71,7 +71,7 @@ export function endpoint<R, B extends {}, P extends string>(
   handle.type = "Endpoint";
   handle.method = config.method ?? "GET";
   handle.path = config.path ?? null;
-  handle.body = config.body ?? null;
+  handle.params = config.params ?? null;
   handle.doc = config.doc ?? null;
   return handle as Endpoint<R, B, P>;
 }

@@ -1,5 +1,4 @@
 import * as api from "@mechanize/asap/api";
-import * as Refine from "@recoiljs/refine";
 
 export let settings = api.endpoint({
   handle: () => {
@@ -10,12 +9,9 @@ export let settings = api.endpoint({
 });
 
 export let hello = api.endpoint({
-  method: "POST",
-  path: "/hello/:greeting",
-  body: {
-    name: Refine.string(),
-  },
+  method: "GET",
+  path: "/hello/:name",
   handle: (params) => {
-    return `${params.greeting}, ${params.name}`;
+    return `Hello, ${params.name}`;
   },
 });

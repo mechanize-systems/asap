@@ -244,13 +244,44 @@ function AppOnPageNotFoundDefault(_props: AppOnPageNotFoundProps) {
   );
 }
 
-export async function UNSAFE__call<R, B, P extends string>(
-  endpoint: { name: string; method: API.HTTPMethod; route: Routing.Route<P> },
-  params: Routing.RouteParams<P> & B
+export type Endpoint<
+  Result,
+  Body extends {},
+  Params extends string
+> = API.Endpoint<Result, Body, Params>;
+
+export type EndpointParams<
+  Body extends {},
+  Params extends string
+> = API.EndpointParams<Body, Params>;
+
+/**
+ * Generate href for an endpoint with params applied.
+ */
+export function endpointHref<B extends {}, P extends string>(
+  endpoint: Endpoint<any, B, P>,
+  params: EndpointParams<B, P>
+): string {
+  let { basePath } = getConfig();
+  let route = (endpoint as any as { route: Routing.Route<P> }).route;
+  let query = "";
+  let qsParams = params;
+  if (route.params.length > 0) {
+    qsParams = { ...params };
+    for (let k of route.params) delete (qsParams as any)[k];
+  }
+  if (Object.keys(qsParams).length > 0) {
+    query = `?${new URLSearchParams(qsParams).toString()}`;
+  }
+  return `${basePath}/_api${Routing.href(route, params)}${query}`;
+}
+
+export async function UNSAFE__call<R, B extends {}, P extends string>(
+  endpoint: Endpoint<R, B, P>,
+  params: EndpointParams<B, P>
 ): Promise<R> {
   if (typeof window !== "undefined") {
-    let { basePath } = getConfig();
-    let path = `${basePath}/_api${Routing.href(endpoint.route, params)}`;
+    let path = endpointHref(endpoint, params);
     if (endpoint.method === "GET") {
       if (path in ASAPEndpointsCache) {
         let record = ASAPEndpointsCache[path]!;
@@ -275,8 +306,7 @@ export async function UNSAFE__call<R, B, P extends string>(
   } else if (typeof ASAPEndpoints !== "undefined") {
     let e = ASAPEndpoints[endpoint.name]!;
     if (endpoint.method === "GET") {
-      let { basePath } = getConfig();
-      let path = `${basePath}/_api${Routing.href(endpoint.route, params)}`;
+      let path = endpointHref(endpoint, params);
       if (path in ASAPEndpointsCache) {
         let record = ASAPEndpointsCache[path]!;
         record.used += 1;

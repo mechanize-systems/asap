@@ -1,6 +1,7 @@
 import type * as APITypes from "../src/api";
 import type * as App from "./App";
 
+import * as url from "url";
 import * as fs from "fs";
 import module from "module";
 import * as path from "path";
@@ -76,6 +77,7 @@ export let load = memoize(
       clearTimeout,
       clearInterval,
       clearImmediate,
+      URLSearchParams,
     };
     vm.createContext(context);
     let filename = "asap://api";
@@ -83,7 +85,7 @@ export let load = memoize(
       let script = new vm.Script(bundle, { filename });
       script.runInContext(context);
     } catch (err: any) {
-      Logging.error("while loading APITypes code");
+      Logging.error("while loading API code");
       console.log(
         await Build.formatBundleErrorStackTrace(
           bundlePath,
@@ -92,13 +94,13 @@ export let load = memoize(
           filename
         )
       );
-      return new Error("error loading APITypes bundle");
+      return new Error("error loading API bundle");
     }
 
     let handleError = async (res: APITypes.Response, err: any) => {
       res.statusCode = 500;
       res.end("500 INTERNAL SERVER ERROR");
-      Logging.error("while serving APITypes request");
+      Logging.error("while serving API request");
       console.log(
         await Build.formatBundleErrorStackTrace(
           bundlePath,
@@ -128,23 +130,6 @@ export let load = memoize(
       }
     };
 
-    let readBody = (req: APITypes.Request<unknown>): Promise<string> => {
-      return new Promise((resolve, reject) => {
-        let chunks: string[] = [];
-        let seenError = false;
-        req.on("data", (chunk) => {
-          chunks.push(chunk);
-        });
-        req.on("error", (err) => {
-          seenError = true;
-          reject(err);
-        });
-        req.on("end", () => {
-          if (!seenError) resolve(chunks.join(""));
-        });
-      });
-    };
-
     let routes: APITypes.Routes = context.module.exports.routes ?? [];
 
     let endpoints: API["endpoints"] = {};
@@ -155,14 +140,7 @@ export let load = memoize(
       routes.push({
         ...endpoint.route,
         method: endpoint.method,
-        async handle(req, res) {
-          let data = await readBody(req);
-          let body = endpoint.parseBody(data);
-          let out =
-            (await endpoint.handle({ ...req.params, ...body })) ?? null;
-          res.setHeader("Content-Type", "application/json");
-          res.send(JSON.stringify(out ?? null));
-        },
+        handle: (req, res) => handleEndpoint(endpoint, req, res),
       });
     }
 
@@ -175,11 +153,39 @@ export let load = memoize(
   }
 );
 
+let readBody = (req: APITypes.Request<unknown>): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    let chunks: string[] = [];
+    let seenError = false;
+    req.on("data", (chunk) => {
+      chunks.push(chunk);
+    });
+    req.on("error", (err) => {
+      seenError = true;
+      reject(err);
+    });
+    req.on("end", () => {
+      if (!seenError) resolve(chunks.join(""));
+    });
+  });
+};
+
+async function handleEndpoint<B extends {}, P extends string>(
+  endpoint: EndpointInfo<B, P>,
+  req: APITypes.Request<Routing.RouteParams<P>>,
+  res: APITypes.Response
+) {
+  let body = await endpoint.parseParams(req);
+  let out = await endpoint.handle({ ...req.params, ...body });
+  res.setHeader("Content-Type", "application/json");
+  res.send(JSON.stringify(out ?? null));
+}
+
 type EndpointInfo<B extends {} = {}, P extends string = string> = {
   name: string;
   method: APITypes.HTTPMethod;
   route: Routing.Route<P>;
-  parseBody: (req: string) => B;
+  parseParams: (req: APITypes.Request<unknown>) => Promise<B>;
   handle: (params: Routing.RouteParams<P> & B) => Promise<unknown>;
 };
 
@@ -190,21 +196,35 @@ function getEndpointInfo(name: string, value: unknown): EndpointInfo | null {
     "type" in value &&
     "method" in value &&
     "path" in value &&
-    "body" in value
+    "params" in value
   ) {
     let { method, path } = value;
     path = path ?? `/${name}`;
-    let parseBody: EndpointInfo<{}, string>["parseBody"] = (_req) => ({});
-    if (value.body != null) {
+    let parseParams: EndpointInfo<{}, string>["parseParams"] = (_req) =>
+      Promise.resolve({});
+    if (value.params != null) {
       let checker = Refine.object(
-        value.body as Readonly<{}>
+        value.params as Readonly<{}>
       ) as Refine.Checker<{}>;
-      parseBody = Refine.jsonParserEnforced(checker);
+      if (method === "GET") {
+        let assertion = Refine.assertion(checker);
+        parseParams = async (req: APITypes.Request<unknown>) => {
+          let qs = url.parse(req.url ?? "/", true).query;
+          qs = { ...qs }; // otherwise it got null prototype and doesn't pass into refine
+          return assertion(qs);
+        };
+      } else if (method === "POST") {
+        let parseBody = Refine.jsonParserEnforced(checker);
+        parseParams = async (req: APITypes.Request<unknown>) => {
+          let body = await readBody(req);
+          return parseBody(body);
+        };
+      }
     }
     return {
       name,
       method: method as APITypes.HTTPMethod,
-      parseBody,
+      parseParams,
       route: Routing.route(path as string),
       handle: value as any as EndpointInfo["handle"],
     };

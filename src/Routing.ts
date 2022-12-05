@@ -73,7 +73,7 @@ type split<S extends string> = string extends S
 type param<T> = T extends `:${infer K}`
   ? [K, string]
   : T extends `*`
-  ? ["path", string]
+  ? ["wild", string]
   : [never, never];
 
 type params<T extends string[]> = {

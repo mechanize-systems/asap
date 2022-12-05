@@ -3,7 +3,7 @@ import * as api from "api";
 import { routes } from "./index";
 import usePromise from "./usePromise";
 
-let helloP = api.hello({ greeting: "Hola", name: "World" });
+let helloP = api.hello({ name: "World" });
 
 type HelloPageProps = {
   name: string;

@@ -74,6 +74,12 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
   App.info("basePath: %s", app.basePath);
 
   if (env === "development") {
+    process.on("unhandledRejection", (reason, _promise) => {
+      // TODO: figure out a way to properly format errors if they come from
+      // bundles
+      console.log("Unhandled promise rejection:", reason);
+    });
+
     let watch = new Watch.Watch();
     let watchPath = app.workspace?.path ?? projectPath;
     await watch.watch(watchPath);
@@ -175,29 +181,35 @@ let serveApp = async (
   req: tinyhttp.Request,
   res: tinyhttp.Response
 ) => {
-  const [out, ssr] = await Promise.all([
-    app.buildApp.ready(),
-    App.getSsr(app),
-  ]);
-  if (ssr instanceof Error) {
+  let sendError = (_err: unknown) => {
     res.statusCode = 500;
     res.setHeader("Content-Type", "text/html");
     res.end(`
       <!doctype html>
       <html>
-      <h1>ERROR: SSR is not available</h1>
+      <h1>ERROR: SSR ERROR</h1>
       </html>
     `);
-    return;
+  };
+  const [out, ssr] = await Promise.all([
+    app.buildApp.ready(),
+    App.getSsr(app),
+  ]);
+  if (ssr instanceof Error) {
+    return sendError(ssr);
   }
   let js = out?.__main__.js?.relativePath ?? "__buildError.js";
   let css = out?.__main__.css?.relativePath;
-  let { page, ReactDOMServer, endpointsCache } = await ssr.render({
+  let rendered = await ssr.render({
     basePath: app.basePath,
     initialPath: req.path,
     js: `${app.basePath}/__static/${js}`,
     css: css != null ? `${app.basePath}/__static/${css}` : null,
   });
+  if (rendered instanceof Error) {
+    return sendError(rendered);
+  }
+  let { page, ReactDOMServer, endpointsCache } = rendered;
   if (page == null) {
     res.statusCode = 404;
     res.setHeader("Content-Type", "text/html");
@@ -217,20 +229,15 @@ let serveApp = async (
       stream.pipe(res);
     },
     onShellError(_error: unknown) {
-      res.statusCode = 500;
-      res.end(`
-        <!doctype html>
-        <html>
-        <h1>ERROR: SSR error</h1>
-        </html>
-      `);
+      sendError(_error);
     },
     onAllReady() {
-      res.write(
-        `<script>
-           window.ASAPEndpointsCache = ${JSON.stringify(endpointsCache)};
-         </script>`
-      );
+      if (res.statusCode === 200)
+        res.write(
+          `<script>
+             window.ASAPEndpointsCache = ${JSON.stringify(endpointsCache)};
+           </script>`
+        );
     },
     onError(err: unknown) {
       didError = true;
