@@ -15,7 +15,10 @@ import * as Logging from "./Logging";
 export let log = debug("asap:ssr");
 
 type SSR = {
-  render: (config: ASAP.BootConfig) => Promise<
+  render: (
+    config: ASAP.BootConfig,
+    options: { setTitle: (title: string) => void }
+  ) => Promise<
     | {
         ReactDOMServer: typeof ReactDOMServer;
         page: React.ReactNode | null;
@@ -44,7 +47,11 @@ export let load = memoize(
     let filename = "asap://app-ssr";
     let script = new vm.Script(bundle, { filename });
 
-    async function evalBundle() {
+    async function evalBundle({
+      setTitle,
+    }: {
+      setTitle: (title: string) => void;
+    }) {
       let thisModule: {
         exports: {
           ReactDOMServer: typeof ReactDOMServer;
@@ -56,12 +63,15 @@ export let load = memoize(
         path.join(app.config.projectPath, "api")
       );
 
-      let endpointsCache: { [name: string]: unknown } = {};
+      let ASAPApi: ASAP.ASAPApi = {
+        setTitle,
+        endpoints,
+        endpointsCache: {},
+      };
 
       let context = {
         ASAPConfig: { basePath: app.basePath },
-        ASAPEndpoints: endpoints,
-        ASAPEndpointsCache: endpointsCache,
+        ASAPApi,
         module: thisModule,
         require: thisRequire,
         Buffer,
@@ -96,11 +106,14 @@ export let load = memoize(
         );
         return new Error("error loading SSR bundle");
       }
-      return [context, endpointsCache] as const;
+      return [context, ASAPApi.endpointsCache] as const;
     }
 
-    let render: SSR["render"] = async (boot: ASAP.BootConfig) => {
-      let res = await evalBundle();
+    let render: SSR["render"] = async (
+      boot: ASAP.BootConfig,
+      { setTitle }
+    ) => {
+      let res = await evalBundle({ setTitle });
       if (res instanceof Error) return res;
       let [context, endpointsCache] = res;
       let { ASAP, config } = context.module.exports;

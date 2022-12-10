@@ -7,13 +7,25 @@ import * as Router from "./Router";
 import * as Routing from "./Routing";
 import type * as API from "./api";
 
+type Environment = "client" | "ssr";
+
+let currentEnvironment: Environment =
+  typeof window === "undefined" ? "ssr" : "client";
+
+export type ASAPApi = {
+  setTitle(title: string): void;
+  endpoints: {
+    [name: string]: { handle: Function };
+  };
+  endpointsCache: {
+    [path: string]: { used: number; result: unknown };
+  };
+};
+
 // This is what's being injected by the server.
 declare var ASAPConfig: Config;
 declare var ASAPBootConfig: BootConfig;
-declare var ASAPEndpoints: { [name: string]: { handle: Function } };
-declare var ASAPEndpointsCache: {
-  [path: string]: { used: number; result: unknown };
-};
+declare var ASAPApi: ASAPApi;
 
 export let route = Router.route;
 
@@ -77,8 +89,8 @@ export type AppOnPageNotFoundProps = {};
 
 /** Boot application with routes. */
 export function boot(config: AppConfig) {
-  if (typeof window === "undefined") return;
-  ReactDOM.hydrateRoot(document, render(config, ASAPBootConfig));
+  if (currentEnvironment === "client")
+    ReactDOM.hydrateRoot(document, render(config, ASAPBootConfig));
 }
 
 export function render(config: AppConfig, boot: BootConfig) {
@@ -131,6 +143,7 @@ export type BootConfig = {
   js: string;
   css: string | null;
 };
+
 export type AppProps = {
   config: AppConfig;
   boot: BootConfig;
@@ -149,6 +162,8 @@ export function App(props: AppProps) {
   return (
     <html>
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta charSet="utf-8" />
         <script dangerouslySetInnerHTML={{ __html: boot }} />
         {js}
         {css}
@@ -244,6 +259,16 @@ function AppOnPageNotFoundDefault(_props: AppOnPageNotFoundProps) {
   );
 }
 
+export function usePageTitle(title: string) {
+  if (currentEnvironment === "client") {
+    React.useLayoutEffect(() => {
+      ASAPApi.setTitle(title);
+    }, [title]);
+  } else if (currentEnvironment === "ssr") {
+    ASAPApi.setTitle(title);
+  }
+}
+
 export type Endpoint<
   Result,
   Body extends {},
@@ -280,13 +305,13 @@ export async function UNSAFE__call<R, B extends {}, P extends string>(
   endpoint: Endpoint<R, B, P>,
   params: EndpointParams<B, P>
 ): Promise<R> {
-  if (typeof window !== "undefined") {
+  if (currentEnvironment === "client") {
     let path = endpointHref(endpoint, params);
     if (endpoint.method === "GET") {
-      if (path in ASAPEndpointsCache) {
-        let record = ASAPEndpointsCache[path]!;
+      if (path in ASAPApi.endpointsCache) {
+        let record = ASAPApi.endpointsCache[path]!;
         if (record.used === 1) {
-          delete ASAPEndpointsCache[path];
+          delete ASAPApi.endpointsCache[path];
         } else {
           record.used -= 1;
         }
@@ -303,23 +328,25 @@ export async function UNSAFE__call<R, B extends {}, P extends string>(
     } else {
       throw new Error(`unknown HTTP method ${endpoint.method}`);
     }
-  } else if (typeof ASAPEndpoints !== "undefined") {
-    let e = ASAPEndpoints[endpoint.name]!;
+  } else if (currentEnvironment === "ssr") {
+    let e = ASAPApi.endpoints[endpoint.name]!;
     if (endpoint.method === "GET") {
       let path = endpointHref(endpoint, params);
-      if (path in ASAPEndpointsCache) {
-        let record = ASAPEndpointsCache[path]!;
+      if (path in ASAPApi.endpointsCache) {
+        let record = ASAPApi.endpointsCache[path]!;
         record.used += 1;
         return record.result as R;
       } else {
         let result = await e.handle!(params);
-        ASAPEndpointsCache[path] = { used: 1, result };
+        ASAPApi.endpointsCache[path] = { used: 1, result };
         return result;
       }
     } else {
       return e.handle!(params);
     }
   } else {
-    throw new Error(`unable to call endpoint ${name}: environment is broken`);
+    throw new Error(
+      `unable to call endpoint ${endpoint.name}: environment is broken`
+    );
   }
 }

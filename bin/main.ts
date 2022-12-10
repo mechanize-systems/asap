@@ -200,12 +200,21 @@ let serveApp = async (
   }
   let js = out?.__main__.js?.relativePath ?? "__buildError.js";
   let css = out?.__main__.css?.relativePath;
-  let rendered = await ssr.render({
-    basePath: app.basePath,
-    initialPath: req.path,
-    js: `${app.basePath}/__static/${js}`,
-    css: css != null ? `${app.basePath}/__static/${css}` : null,
-  });
+  let rendered = await ssr.render(
+    {
+      basePath: app.basePath,
+      initialPath: req.path,
+      js: `${app.basePath}/__static/${js}`,
+      css: css != null ? `${app.basePath}/__static/${css}` : null,
+    },
+    {
+      setTitle(title) {
+        res.write(
+          `<script>document.title = ${JSON.stringify(title)};</script>`
+        );
+      },
+    }
+  );
   if (rendered instanceof Error) {
     return sendError(rendered);
   }
@@ -235,7 +244,13 @@ let serveApp = async (
       if (res.statusCode === 200)
         res.write(
           `<script>
-             window.ASAPEndpointsCache = ${JSON.stringify(endpointsCache)};
+             window.ASAPApi = {
+               setTitle(title) {
+                 document.title = title;
+               },
+               endpoints: null,
+               endpointsCache: ${JSON.stringify(endpointsCache)}
+             };
            </script>`
         );
     },
