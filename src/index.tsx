@@ -153,14 +153,12 @@ export function App(props: AppProps) {
         {js}
         {css}
       </head>
-      <body>
-        <Content {...props} />
-      </body>
+      <Body {...props} />
     </html>
   );
 }
 
-function Content({ config, boot }: AppProps) {
+function Body({ config, boot }: AppProps) {
   let asapConfig = getConfig();
   let [isNavigating, path, router] = Router.useLocation({
     basePath: asapConfig.basePath,
@@ -200,9 +198,11 @@ function match<T extends string>(
 
 function AppChromeDefault(props: AppChromeProps) {
   return (
-    <React.Suspense fallback={<props.AppLoading />}>
-      {props.children}
-    </React.Suspense>
+    <body>
+      <React.Suspense fallback={<props.AppLoading />}>
+        {props.children}
+      </React.Suspense>
+    </body>
   );
 }
 

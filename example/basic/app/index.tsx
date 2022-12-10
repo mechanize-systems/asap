@@ -18,12 +18,14 @@ function randomSleep() {
 
 function AppChrome(props: ASAP.AppChromeProps) {
   return (
-    <React.Suspense fallback={<props.AppLoading />}>
-      {props.isNavigating && (
-        <div className="LoadingIndicator">Loading...</div>
-      )}
-      {props.children}
-    </React.Suspense>
+    <body>
+      <React.Suspense fallback={<props.AppLoading />}>
+        {props.isNavigating && (
+          <div className="LoadingIndicator">Loading...</div>
+        )}
+        {props.children}
+      </React.Suspense>
+    </body>
   );
 }
 

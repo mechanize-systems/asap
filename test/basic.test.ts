@@ -63,7 +63,7 @@ async function runTestScenario(page: Page) {
   // Check that `hello` page is rendering.
   {
     await page.goto("http://127.0.0.1:7777/hello/world");
-    await expectPageContentToBe(page, "this is hello: name=world");
+    await expectPageContentToBe(page, "this is hello: name=<!-- -->world");
   }
 
   // Test that navigation with links is working.
@@ -101,6 +101,8 @@ function createProject() {
           hello: ASAP.route('/hello/:name', async () => ({default: Hello})),
         }
 
+        export let config = {routes}
+
         function Hello({name}) {
           return <div>
             <div className="PageContent">this is hello: name={name}</div>
@@ -112,8 +114,6 @@ function createProject() {
             </ASAP.Link>
           </div>
         }
-
-        ASAP.boot({routes});
       `,
       "IndexPage.js": `
         import * as React from 'react';

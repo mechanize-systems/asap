@@ -24,12 +24,17 @@ export async function createTestProject(
   let projectRoot = await fs.promises.mkdtemp(path.join(__dirname, "test-"));
 
   await fs.promises.writeFile(
+    path.join(projectRoot, "pnpm-workspace.yaml"),
+    ""
+  );
+
+  await fs.promises.writeFile(
     path.join(projectRoot, "package.json"),
     JSON.stringify({
       name: path.basename(projectRoot),
       version: "0.1.0",
       dependencies: {
-        "@mechanize/asap": `link:${asapRoot}`,
+        "@mechanize/asap": `file:${asapRoot}`,
         react: "18.2.0",
         "react-dom": "18.2.0",
       },

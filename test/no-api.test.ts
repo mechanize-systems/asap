@@ -90,11 +90,11 @@ function createProject() {
           index: ASAP.route('/', async () => ({default: Index})),
         }
 
+        export let config = {routes}
+
         function Index() {
           return <div className="PageContent">this is index</div>;
         }
-
-        ASAP.boot({routes});
       `,
     },
   });
