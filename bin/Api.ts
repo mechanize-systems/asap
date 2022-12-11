@@ -70,6 +70,7 @@ export let load = memoize(
           ASAP__BASE_PATH: app.basePath,
         },
       },
+      __dirname: app.config.projectPath,
       console,
       setTimeout,
       setInterval,

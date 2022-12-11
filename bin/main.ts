@@ -85,9 +85,11 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
     await watch.watch(watchPath);
     let clock = await watch.clock(watchPath);
 
-    await app.buildApp.start();
-    await app.buildAppForSsr.start();
-    await app.buildApi.start();
+    await Promise.all([
+      app.buildApp.start(),
+      app.buildAppForSsr.start(),
+      app.buildApi.start(),
+    ]);
 
     let onChange = debounce(() => {
       App.info("changes detected, rebuilding");

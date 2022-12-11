@@ -49,8 +49,10 @@ export let load = memoize(
 
     async function evalBundle({
       setTitle,
+      initialPath,
     }: {
       setTitle: (title: string) => void;
+      initialPath: string;
     }) {
       let thisModule: {
         exports: {
@@ -75,6 +77,7 @@ export let load = memoize(
         module: thisModule,
         require: thisRequire,
         Buffer,
+        location: { pathname: initialPath },
         process: {
           ...process,
           env: {
@@ -113,7 +116,10 @@ export let load = memoize(
       boot: ASAP.BootConfig,
       { setTitle }
     ) => {
-      let res = await evalBundle({ setTitle });
+      let res = await evalBundle({
+        setTitle,
+        initialPath: boot.initialPath ?? "/",
+      });
       if (res instanceof Error) return res;
       let [context, endpointsCache] = res;
       let { ASAP, config } = context.module.exports;

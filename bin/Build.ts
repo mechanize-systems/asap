@@ -281,6 +281,7 @@ export function build<E extends EnrtyPoints>(
   };
 
   let ready = async (): Promise<BuildOutput<E> | null> => {
+    log("ready() called started=%s", started);
     if (!started) {
       try {
         if (previousOutput == null) previousOutput = loadOutput();
@@ -289,6 +290,7 @@ export function build<E extends EnrtyPoints>(
         return null;
       }
     } else {
+      log("ready() called");
       try {
         await current.promise;
         if (current.isResolved) return current.value.output;
