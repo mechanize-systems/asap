@@ -27,6 +27,8 @@ declare var ASAPConfig: Config;
 declare var ASAPBootConfig: BootConfig;
 declare var ASAPApi: ASAPApi;
 
+export type Route<P extends string = string> = Router.Route<P>;
+
 export let route = Router.route;
 
 export let useRouter = Router.useRouter;
@@ -104,6 +106,8 @@ export function render(config: AppConfig, boot: BootConfig) {
 export type LinkProps<P extends string> = {
   route: Router.Route<P>;
   params: Router.RouteParams<P>;
+  activeClassName?: undefined | string;
+  inactiveClassName?: undefined | string;
 } & Omit<React.HTMLProps<HTMLAnchorElement>, "href">;
 
 /**
@@ -112,11 +116,25 @@ export type LinkProps<P extends string> = {
  */
 export let Link = React.forwardRef(
   <P extends string>(
-    { route, params, ...props }: LinkProps<P>,
+    {
+      route,
+      params,
+      activeClassName,
+      inactiveClassName,
+      className: defaultClassName,
+      ...props
+    }: LinkProps<P>,
     ref: React.Ref<HTMLAnchorElement>
   ) => {
     let router = Router.useRouter();
     let href = Routing.href(route, params);
+    let [isActive, setIsActive] = React.useState(router.currentPath === href);
+    Router.useLocationListener(
+      (currentPath) => {
+        setIsActive(currentPath === href);
+      },
+      [href]
+    );
     let onClick: React.MouseEventHandler<HTMLAnchorElement> =
       React.useCallback(
         (ev) => {
@@ -126,9 +144,18 @@ export let Link = React.forwardRef(
         },
         [href]
       );
+    let className = React.useMemo(() => {
+      let className = [];
+      if (defaultClassName != null) className.push(defaultClassName);
+      if (isActive) className.push(activeClassName);
+      if (!isActive) className.push(inactiveClassName);
+      if (className.length > 0) return className.join(" ");
+      else return undefined;
+    }, [isActive, activeClassName, inactiveClassName]);
     return (
       <a
         {...props}
+        className={className}
         ref={ref}
         href={getConfig().basePath + href}
         onClick={onClick}

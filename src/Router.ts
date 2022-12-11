@@ -33,6 +33,8 @@ export function route<P extends string, L extends LoadPage<P>>(
 }
 
 export type Router = {
+  basePath: string;
+  currentPath: string;
   navigate: (path: string, config?: { replace?: boolean }) => void;
 };
 
@@ -52,6 +54,20 @@ const eventPopstate = "popstate";
 const eventPushState = "pushState";
 const eventReplaceState = "replaceState";
 const events = [eventPopstate, eventPushState, eventReplaceState];
+
+export function useLocationListener(
+  callback: (path: string) => void,
+  deps: unknown[]
+) {
+  let router = useRouter();
+  React.useEffect(() => {
+    let callback_ = () => {
+      callback(currentPathname(router.basePath));
+    };
+    events.forEach((e) => addEventListener(e, callback_));
+    return () => events.forEach((e) => removeEventListener(e, callback_));
+  }, [router, ...deps]);
+}
 
 export function useLocation({
   basePath = "",
@@ -100,6 +116,10 @@ export function useLocation({
   // it can be passed down as an element prop without any performance concerns.
   let router: Router = React.useMemo(
     () => ({
+      basePath,
+      get currentPath() {
+        return currentPathname(basePath);
+      },
       navigate: (
         to: string,
         { replace = false }: { replace?: boolean } = {}
