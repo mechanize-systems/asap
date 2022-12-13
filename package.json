@@ -26,7 +26,6 @@
     "@types/react": "^18.0.25",
     "@types/react-dom": "^18.0.9",
     "@types/source-map-support": "^0.5.4",
-    "@vanilla-extract/esbuild-plugin": "^2.2.0",
     "chalk": "^4",
     "cmd-ts": "^0.10.2",
     "convert-source-map": "^1.8.0",

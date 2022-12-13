@@ -13,7 +13,6 @@ import * as ErrorStackParser from "error-stack-parser";
 import * as ConvertSourceMap from "convert-source-map";
 import escapeStringRegexp from "escape-string-regexp";
 import debug from "debug";
-import { vanillaExtractPlugin } from "@vanilla-extract/esbuild-plugin";
 import { deferred } from "./PromiseUtil";
 import * as Logging from "./Logging";
 
@@ -168,7 +167,7 @@ export function build<E extends EnrtyPoints>(
     current.reject(err);
   };
 
-  let plugins: esbuild.Plugin[] = [vanillaExtractPlugin()];
+  let plugins: esbuild.Plugin[] = [];
   if (typeof config.external === "function") {
     plugins.push({
       name: "external",
