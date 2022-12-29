@@ -1,8 +1,10 @@
 import "source-map-support/register";
 
 import type * as API from "../src/api";
+import * as socketActivation from "socket-activation";
 
 import * as path from "path";
+import * as http from "http";
 import * as tinyhttp from "@tinyhttp/app";
 import debug from "debug";
 import * as Cmd from "cmd-ts";
@@ -162,20 +164,36 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
   server.use(`/__static`, staticServer);
   server.get(`*`, (req, res) => serveApp(app, req, res));
 
-  let rootServer = new tinyhttp.App({ settings: { xPoweredBy: false } });
+  let rootApp = new tinyhttp.App({ settings: { xPoweredBy: false } });
+  rootApp.use(app.basePath, server);
 
-  rootServer.use(app.basePath, server);
+  function createServer() {
+    let server = http.createServer(async (req, res) => {
+      await rootApp.handler(req as tinyhttp.Request, res as tinyhttp.Response);
+    });
+    server.on("error", (err) => {
+      throw err;
+    });
+    return server;
+  }
 
-  rootServer.listen(
-    serveConfig.port,
-    () =>
-      App.info(
-        "listening on http://%s:%d",
-        serveConfig.iface,
-        serveConfig.port
-      ),
-    serveConfig.iface
-  );
+  if (serveConfig.iface === "systemd") {
+    for (const fd of socketActivation.collect("asap")) {
+      let server = createServer();
+      server.listen({ fd }, () => {
+        let address = server.address();
+        if (typeof address === "string") App.info("listening on %s", address);
+        else App.info("listening");
+      });
+    }
+  } else {
+    let iface = serveConfig.iface ?? "127.0.0.1";
+    let port = serveConfig.port ?? 3001;
+    let server = createServer();
+    server.listen(port, iface, () => {
+      App.info("listening on %s:%d", iface, port);
+    });
+  }
 }
 
 let serveApp = async (

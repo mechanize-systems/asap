@@ -36,6 +36,7 @@ main.js: $(wildcard bin/*) pnpm-lock.yaml
 		--platform=node \
 		--external:esbuild \
 		--external:fb-watchman \
+		--external:socket-activation \
 		--log-level=error \
 		--outfile=$@ ./bin/main.ts
 	@chmod +x $@
