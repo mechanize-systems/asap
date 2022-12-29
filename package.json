@@ -1,6 +1,6 @@
 {
   "name": "@mechanize/asap",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "description": "React web application framework",
   "bin": {
     "asap": "main.js"
@@ -46,14 +46,14 @@
     "ts-node": "^10.5.0",
     "typescript": "^4.9.3",
     "typescript-language-server": "^0.11.2",
-    "regexparam": "^2.0.0",
     "word-wrap": "^1.2.3"
   },
   "dependencies": {
     "@recoiljs/refine": "^0.1.1",
     "esbuild": "^0.14.54",
     "fb-watchman": "^2.0.1",
-    "socket-activation": "^3.2.0"
+    "socket-activation": "^3.2.0",
+    "regexparam": "^2.0.0"
   },
   "files": [
     "LICENSE",
