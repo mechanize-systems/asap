@@ -5,7 +5,7 @@
  */
 
 import * as Watchman from "fb-watchman";
-import { deferred, Deferred } from "./PromiseUtil";
+import { deferred, Deferred } from "@mechanize-systems/base/Promise";
 import debug from "debug";
 
 let log = debug("asap:Watch");

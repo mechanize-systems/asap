@@ -13,7 +13,7 @@ import * as ErrorStackParser from "error-stack-parser";
 import * as ConvertSourceMap from "convert-source-map";
 import escapeStringRegexp from "escape-string-regexp";
 import debug from "debug";
-import { deferred } from "./PromiseUtil";
+import { deferred } from "@mechanize-systems/base/Promise";
 import * as Logging from "./Logging";
 
 /** A collection of named entry points for the build. */

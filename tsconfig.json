@@ -19,7 +19,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
 
-    "target": "es2018",
+    "target": "es2020",
     "baseUrl": "./",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
@@ -33,9 +33,10 @@
     "jsx": "react-jsx",
     "composite": true,
     "incremental": true,
-    "typeRoots": ["./typings/", "node_modules/@types"]
+    "typeRoots": ["./typings/", "node_modules/@types"],
+    "paths": { "@mechanize-systems/base/*": ["./base/*"] }
   },
-  "include": ["src/**/*", "bin/**/*", "typings/**/*"],
+  "include": ["base/**/*", "src/**/*", "bin/**/*", "typings/**/*"],
   "ts-node": {
     "compilerOptions": {
       "module": "commonjs"
