@@ -28,7 +28,7 @@ fmt:
 	echo 'export PROJECT__ROOT="$$PWD"' >> $@
 	echo 'PATH_add "$$PROJECT__ROOT/.bin"' >> $@
 
-main.js: $(wildcard bin/*) pnpm-lock.yaml
+main.js: $(wildcard bin/*) $(wildcard base/*) pnpm-lock.yaml
 	@mkdir -p $(@D)
 	@pnpm esbuild \
 		--bundle \

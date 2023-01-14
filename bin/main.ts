@@ -1,17 +1,17 @@
 import "source-map-support/register";
 
-import type * as API from "../src/api";
 import * as socketActivation from "socket-activation";
 
+import * as fs from "fs";
 import * as path from "path";
 import * as http from "http";
 import * as tinyhttp from "@tinyhttp/app";
 import debug from "debug";
-import * as Cmd from "cmd-ts";
-import * as CmdFs from "cmd-ts/batteries/fs";
 import sirv from "sirv";
 import debounce from "debounce";
+import * as C from "@mechanize-systems/base/CommandLine";
 
+import type * as API from "../src/api";
 import * as App from "./App";
 import * as Logging from "./Logging";
 import * as Watch from "./Watch";
@@ -168,9 +168,9 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
   rootApp.use(app.basePath, server);
 
   function createServer() {
-    let server = http.createServer(async (req, res) => {
-      await rootApp.handler(req as tinyhttp.Request, res as tinyhttp.Response);
-    });
+    let server = http.createServer((req, res) =>
+      rootApp.handler(req as tinyhttp.Request, res as tinyhttp.Response)
+    );
     server.on("error", (err) => {
       throw err;
     });
@@ -329,91 +329,108 @@ if (!("DEBUG" in process.env)) {
   debug.enable("asap:info,asap:error");
 }
 
-let appConfigArgs = {
-  projectPath: Cmd.positional({
-    type: Cmd.optional(CmdFs.Directory),
-    displayName: "PROJECT_PATH",
-  }),
-  basePath: Cmd.option({
-    long: "base-path",
-    description: "Base path application is running at",
-    env: "ASAP__BASE_PATH",
-    defaultValue: () => "" as App.AppEnv,
-    type: Cmd.string,
-  }),
-  env: Cmd.option({
-    short: "E",
-    long: "env",
-    description:
-      "either 'development' or 'production' (default: 'production')",
+let projectPath = C.argOptional(
+  C.argAnd(
+    {
+      docv: "PROJECT_PATH",
+      doc: "Project path",
+    },
+    (path) => {
+      if (!fs.existsSync(path)) C.error(`not a directory: ${path}`);
+      let stat = fs.statSync(path);
+      if (!stat.isDirectory()) C.error(`not a directory: ${path}`);
+      return path;
+    }
+  ),
+  process.cwd()
+);
+
+let basePath = C.option({
+  name: "base-path",
+  doc: "Application path",
+  docv: "PATH",
+  env: "ASAP__BASE_PATH",
+  default: "",
+});
+
+let env = C.optionAnd(
+  {
+    name: "env",
+    shortName: "E",
+    doc: "either 'development' or 'production'",
+    docv: "ENV",
     env: "NODE_ENV",
-    defaultValue: () => "development" as App.AppEnv,
-    type: Cmd.oneOf(["development", "production"]),
-  }),
-};
-
-let portType: Cmd.Type<string, number> = {
-  async from(value: string) {
-    if (value.startsWith(":")) value = value.slice(1);
-    if (!/^\d+$/.exec(value)) throw new Error("Not a number");
-    return parseInt(value, 10);
+    default: "production",
   },
-};
+  (env) => {
+    if (env === "production" || env === "development") return env;
+    C.error(`--env should be set to "production" or "development"`);
+  }
+);
 
-let serveCmd = Cmd.command({
-  name: "serve",
-  description: "Serve application",
-  args: {
-    ...appConfigArgs,
-    xForwardedUser: Cmd.option({
-      long: "x-forwarded-user",
-      description: "Set X-Forwarded-User HTTP header",
-      env: "ASAP__X_FORWARDED_USER",
-      type: Cmd.optional(Cmd.string),
-    }),
-    port: Cmd.option({
-      long: "port",
-      description: "Port to listen on (default: 3001)",
-      defaultValue: () => 3001,
-      env: "ASAP__PORT",
-      type: portType,
-    }),
-    iface: Cmd.option({
-      long: "interface",
-      description: "Interface to listen on (default: 127.0.0.1)",
-      defaultValue: () => "127.0.0.1",
-      env: "ASAP__INTERFACE",
-      type: Cmd.string,
-    }),
+function parsePort(value: string) {
+  if (value.startsWith(":")) value = value.slice(1);
+  if (!/^\d+$/.exec(value)) throw new Error("Not a number");
+  return parseInt(value, 10);
+}
+
+let serveCmd = C.cmd(
+  {
+    name: "serve",
+    doc: "Serve application",
+    opts: {
+      basePath,
+      env,
+      iface: C.option({
+        name: "interface",
+        doc: 'interface to listen on, pass "systemd" to use systemd socket activation',
+        docv: "INTERFACE",
+        default: "127.0.0.1",
+        env: "ASAP__INTERFACE",
+      }),
+      port: C.optionAnd(
+        {
+          name: "port",
+          doc: "port to listen on",
+          docv: "PORT",
+          default: "3001",
+          env: "ASAP__PORT",
+        },
+        parsePort
+      ),
+      xForwardedUser: C.option({
+        name: "x-forwarded-user",
+        doc: "set X-Forwarded-User HTTP header",
+        env: "ASAP__X_FORWARDED_USER",
+      }),
+    },
+    argsRest: projectPath,
   },
-  handler: ({
-    projectPath = process.cwd(),
-    basePath,
-    env,
-    port,
-    iface,
-    xForwardedUser,
-  }) => {
+  ({ basePath, env, port, iface, xForwardedUser }, projectPath) => {
     serve(
       { projectPath, basePath, env: env as App.AppEnv },
       { port, iface, xForwardedUser }
     );
-  },
-});
+  }
+);
 
-let buildCmd = Cmd.command({
-  name: "build",
-  description: "Build application",
-  args: {
-    ...appConfigArgs,
+let buildCmd = C.cmd(
+  {
+    name: "build",
+    doc: "Build application",
+    opts: {
+      basePath,
+      env,
+    },
+    argsRest: projectPath,
   },
-  handler: async ({ projectPath = process.cwd(), env }) => {
+  async ({ env }, projectPath) => {
     let ok = await build({ projectPath, env: env as App.AppEnv });
     if (!ok) process.exit(1);
-  },
-});
+  }
+);
 
-let asapCmd = Cmd.subcommands({
+let asapCmd = C.cmd({
   name: "asap",
   version: require("../package.json").version,
   cmds: {
@@ -422,4 +439,4 @@ let asapCmd = Cmd.subcommands({
   },
 });
 
-Cmd.run(asapCmd, process.argv.slice(2));
+C.run(process.argv.slice(2), asapCmd);
