@@ -19,6 +19,8 @@ export let log = debug("asap:api");
 export type API = {
   routes: APITypes.Routes;
   onRequest: APITypes.Handle<void> | null;
+  onWebSocket: APITypes.OnWebSocket | null;
+  onCleanup: APITypes.OnCleanup | null;
   endpoints: { [name: string]: EndpointInfo };
   handle: <P>(
     handler: APITypes.Handle<P>,
@@ -47,6 +49,8 @@ export let load = memoize(
     type APIExports = {
       routes?: APITypes.Routes;
       onRequest?: APITypes.Handle<void>;
+      onWebSocket?: APITypes.OnWebSocket;
+      onCleanup?: APITypes.OnCleanup;
       [name: string]: APITypes.Endpoint<unknown, {}> | unknown;
     };
 
@@ -149,7 +153,9 @@ export let load = memoize(
       routes,
       endpoints,
       handle,
+      onWebSocket: context.module.exports.onWebSocket ?? null,
       onRequest: context.module.exports.onRequest ?? null,
+      onCleanup: context.module.exports.onCleanup ?? null,
     };
   }
 );

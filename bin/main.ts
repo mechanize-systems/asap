@@ -8,10 +8,12 @@ import * as http from "http";
 import * as tinyhttp from "@tinyhttp/app";
 import debug from "debug";
 import sirv from "sirv";
+import * as ws from "ws";
 import debounce from "debounce";
 import * as C from "@mechanize-systems/base/CommandLine";
 
 import type * as API from "../src/api";
+import type * as Api from "./Api";
 import * as App from "./App";
 import * as Logging from "./Logging";
 import * as Watch from "./Watch";
@@ -33,6 +35,11 @@ type ServeConfig = {
   port: number | undefined;
 
   xForwardedUser: string | undefined;
+
+  /**
+   * Start WebSocket connection.
+   */
+  websocket: boolean;
 };
 
 function fatal(msg: string): never {
@@ -74,6 +81,7 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
   App.info("projectPath: $PWD/%s", path.relative(process.cwd(), projectPath));
   App.info("env: %s", env);
   App.info("basePath: %s", app.basePath);
+  if (serveConfig.websocket) App.info("enabling WebSocket support");
 
   if (env === "development") {
     process.on("unhandledRejection", (reason, _promise) => {
@@ -107,6 +115,16 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
     await watch.subscribe({ path: watchPath, since: clock }, onChange);
   }
 
+  let prevApi: Api.API | Error | null = null;
+  async function getApi() {
+    let api = await App.getApi(app);
+    if (prevApi != null && !(prevApi instanceof Error) && prevApi !== api) {
+      if (prevApi.onCleanup != null) prevApi.onCleanup();
+    }
+    prevApi = api;
+    return api;
+  }
+
   if (env === "production") {
     let [appOutput, apiOutput] = await Promise.all([
       app.buildApp.ready(),
@@ -121,14 +139,17 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
     }
     // Preload API bundle at the startup so we fail early.
     try {
-      await App.getApi(app);
+      await getApi();
     } catch {
       fatal("could not initialize api bundle");
     }
   }
 
   let apiServer = new tinyhttp.App();
-  apiServer.all("*", (req, res, next) => serveApi(app, req, res, next));
+  apiServer.all("*", async (req, res, next) => {
+    let api = await getApi();
+    serveApi(api, req, res, next);
+  });
 
   let staticServer = sirv(app.buildApp.buildPath, {
     dev: app.config.env === "development",
@@ -144,7 +165,7 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
     next();
   });
   server.use(async (req, res, next) => {
-    let api = await App.getApi(app);
+    let api = await getApi();
     if (api instanceof Error) return res.sendStatus(500);
     if (api == null) return next();
 
@@ -171,6 +192,20 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
     let server = http.createServer((req, res) =>
       rootApp.handler(req as tinyhttp.Request, res as tinyhttp.Response)
     );
+    if (serveConfig.websocket) {
+      let wsserver = new ws.WebSocketServer({ server });
+      wsserver.on("connection", async (connection) => {
+        let api = await getApi();
+        if (api == null || api instanceof Error) {
+          connection.close();
+        } else if (api.onWebSocket == null) {
+          Logging.error("missing onWebSocket(socket) in api");
+          connection.close();
+        } else {
+          api.onWebSocket(connection);
+        }
+      });
+    }
     server.on("error", (err) => {
       throw err;
     });
@@ -284,20 +319,12 @@ let serveApp = async (
 };
 
 let serveApi = async (
-  app: App.App,
+  api: Api.API | null | Error,
   req: tinyhttp.Request,
   res: tinyhttp.Response,
   next: tinyhttp.NextFunction
 ) => {
   let url = new URL(`proto://example${req.url}`);
-  let output = await app.buildApi.ready();
-  if (output == null) {
-    res.statusCode = 500;
-    res.end("500 INTERNAL SERVER ERROR");
-    return;
-  }
-
-  let api = await App.getApi(app);
   if (api instanceof Error) {
     res.statusCode = 500;
     res.end("500 INTERNAL SERVER ERROR");
@@ -398,6 +425,10 @@ let serveCmd = C.cmd(
         },
         parsePort
       ),
+      websocket: C.optionFlag({
+        name: "websocket",
+        doc: "handle WebSocket connection",
+      }),
       xForwardedUser: C.option({
         name: "x-forwarded-user",
         doc: "set X-Forwarded-User HTTP header",
@@ -406,10 +437,10 @@ let serveCmd = C.cmd(
     },
     argsRest: projectPath,
   },
-  ({ basePath, env, port, iface, xForwardedUser }, projectPath) => {
+  ({ basePath, env, port, iface, xForwardedUser, websocket }, projectPath) => {
     serve(
       { projectPath, basePath, env: env as App.AppEnv },
-      { port, iface, xForwardedUser }
+      { port, iface, xForwardedUser, websocket }
     );
   }
 );

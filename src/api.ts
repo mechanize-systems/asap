@@ -2,6 +2,7 @@
  * Utilities to define API part of ASAP apps.
  */
 
+import type * as ws from "ws";
 import type * as http from "http";
 import type * as Refine from "@recoiljs/refine";
 import * as Routing from "./Routing";
@@ -28,6 +29,10 @@ export type Handle<Params> = (
   res: Response,
   next: Next
 ) => unknown | Promise<unknown>;
+
+export type OnWebSocket = (connection: ws.WebSocket) => void;
+
+export type OnCleanup = () => void;
 
 export function route<P extends string>(
   method: HTTPMethod,
