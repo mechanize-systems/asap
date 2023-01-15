@@ -52,6 +52,8 @@ First of all create `app.js` in the root of your repository:
 import * as React from "react";
 import * as ASAP from "@mechanize/asap";
 
+export let config: ASAP.AppConfig = { routes };
+
 export let routes = {
   index: ASAP.route("/", async () => ({ default: Index })),
   hello: ASAP.route("/hello/:name", async () => ({ default: Hello })),
@@ -74,8 +76,6 @@ function Index() {
 function Hello({ name }) {
   return <div>Hello, {name}!</div>;
 }
-
-ASAP.boot({ routes });
 ```
 
 Let's add a few simple API methods, create `api.js` file also in the root of the repo:
