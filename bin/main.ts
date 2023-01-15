@@ -360,7 +360,7 @@ let env = C.optionAnd(
     doc: "either 'development' or 'production'",
     docv: "ENV",
     env: "NODE_ENV",
-    default: "production",
+    default: "development",
   },
   (env) => {
     if (env === "production" || env === "development") return env;
