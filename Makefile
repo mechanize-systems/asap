@@ -4,6 +4,12 @@ LIB = $(LIB0:src/%.tsx=lib/%.js)
 DTS = $(LIB:%.js=%.d.ts)
 DTS0 = $(DTS:lib/%=node_modules/.cache/tsbuild/src/%)
 
+.PHONY: init
+init:
+	git submodule init
+	git submodule update
+	pnpm install
+
 .PHONY: build
 build: api.js main.js $(LIB) $(DTS)
 
