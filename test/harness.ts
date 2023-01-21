@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as fs from "fs";
+import waitPort from "wait-port";
 import { default as execa, ExecaChildProcess } from "execa";
 
 export type TestProjectSpec = {
@@ -11,6 +12,10 @@ export type TestProject = {
   writeFile: (path: string, content: string) => Promise<void>;
   unlink: (path: string) => Promise<void>;
   exec: (cmd: string, args: string[]) => ExecaChildProcess;
+  serve: (args: string[]) => Promise<{
+    port: number;
+    process: execa.ExecaChildProcess<string>;
+  }>;
   dispose: () => Promise<void>;
 };
 
@@ -61,9 +66,16 @@ export async function createTestProject(
     await exec("rm", ["-rf", projectRoot]);
   };
 
+  let serve = async (args: string[]) => {
+    let port = 7777;
+    let p = exec("asap", ["serve", `--port=${port}`, ...args]);
+    await waitPort({ port, output: "silent" });
+    return { port, process: p };
+  };
+
   await exec("pnpm", ["install"]);
 
-  return { projectRoot, exec, writeFile, unlink, dispose };
+  return { projectRoot, exec, serve, writeFile, unlink, dispose };
 }
 
 export function sleep(ms: number) {

@@ -4,12 +4,7 @@ import * as Harness from "./harness";
 test("development workflow", async ({ page, request }) => {
   let project = await createProject();
 
-  let server = project.exec("asap", [
-    "serve",
-    "--env=development",
-    "--port=7777",
-  ]);
-  await Harness.sleep(500);
+  let server = await project.serve(["--env=development"]);
   // App works
   {
     await page.goto("http://127.0.0.1:7777/");
@@ -46,7 +41,7 @@ test("development workflow", async ({ page, request }) => {
     let resp = await request.get("http://127.0.0.1:7777/_api/");
     expect(resp.status()).toBe(404);
   }
-  server.kill("SIGTERM");
+  server.process.kill("SIGTERM");
   await project.dispose();
 });
 
@@ -54,12 +49,7 @@ test("production workflow", async ({ page, request }) => {
   let project = await createProject();
   await project.exec("asap", ["build", "--env", "production"]);
 
-  let server = project.exec("asap", [
-    "serve",
-    "--env=production",
-    "--port=7777",
-  ]);
-  await Harness.sleep(500);
+  let server = await project.serve(["--env=production"]);
   // App works
   {
     await page.goto("http://127.0.0.1:7777/");
@@ -70,7 +60,7 @@ test("production workflow", async ({ page, request }) => {
     let resp = await request.get("http://127.0.0.1:7777/_api/");
     expect(resp.status()).toBe(404);
   }
-  server.kill("SIGTERM");
+  server.process.kill("SIGTERM");
   await project.dispose();
 });
 

@@ -4,12 +4,7 @@ import * as Harness from "./harness";
 test("development workflow", async ({ page }) => {
   let project = await createProject();
 
-  let server = project.exec("asap", [
-    "serve",
-    "--env=development",
-    "--port=7777",
-  ]);
-  await Harness.sleep(500); // TODO: get rid of this by checking stdout logging?
+  let server = await project.serve(["--env=development"]);
   await runTestScenario(page);
 
   // Check that server rebuilds the bundle on changes
@@ -34,7 +29,7 @@ test("development workflow", async ({ page }) => {
     await expectPageContentToBe(page, "CHANGED!");
   }
 
-  server.kill("SIGTERM");
+  server.process.kill("SIGTERM");
   await project.dispose();
 });
 
@@ -42,14 +37,9 @@ test("production workflow", async ({ page }) => {
   let project = await createProject();
   await project.exec("asap", ["build", "--env", "production"]);
 
-  let server = project.exec("asap", [
-    "serve",
-    "--env=production",
-    "--port=7777",
-  ]);
-  await Harness.sleep(500); // TODO: get rid of this by checking stdout logging?
+  let server = await project.serve(["--env=production"]);
   await runTestScenario(page);
-  server.kill("SIGTERM");
+  server.process.kill("SIGTERM");
   await project.dispose();
 });
 
