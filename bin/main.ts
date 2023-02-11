@@ -362,11 +362,11 @@ let projectPath = C.argOptional(
       docv: "PROJECT_PATH",
       doc: "Project path",
     },
-    (path) => {
-      if (!fs.existsSync(path)) C.error(`not a directory: ${path}`);
-      let stat = fs.statSync(path);
-      if (!stat.isDirectory()) C.error(`not a directory: ${path}`);
-      return path;
+    (p: string) => {
+      if (!fs.existsSync(p)) C.error(`not a directory: ${p}`);
+      let stat = fs.statSync(p);
+      if (!stat.isDirectory()) C.error(`not a directory: ${p}`);
+      return path.resolve(p);
     }
   ),
   process.cwd()
