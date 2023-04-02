@@ -8,7 +8,6 @@ import escapeStringRegexp from "escape-string-regexp";
 
 import * as Ssr from "./Ssr";
 import * as Api from "./Api";
-import * as Pages from "./Pages";
 import * as Workspace from "./Workspace";
 import * as Build from "./Build";
 
@@ -49,7 +48,6 @@ export type App = {
   basePath: string;
   buildApi: Build.BuildService<{ __main__: string }>;
   buildApp: Build.BuildService<{ __main__: string }>;
-  buildAppServer: Build.BuildService<{ __main__: string }>;
   buildAppForSsr: Build.BuildService<{ __main__: string }>;
 };
 
@@ -71,6 +69,68 @@ export async function create(config: AppConfig): Promise<App> {
     log("workspace", path.relative(process.cwd(), workspace.path));
   }
 
+  let bundleMap: Record<
+    string,
+    {
+      id: string;
+      chunks: string[];
+      name: "default" | string;
+      async: boolean;
+    }
+  > = {};
+
+  let clientReferences: { [id: string]: { id: string; path: string } } = {};
+
+  let [crf, crfPlugin] = Build.makeEntryPlugin(
+    "crf",
+    config.projectPath,
+    async () => {
+      await getApi(app);
+      let s = JSON.stringify;
+      let lines: string[] = [];
+      for (let id in clientReferences)
+        lines.push(`${s(id)}: () => import(${s(clientReferences[id]!.path)})`);
+      return `
+        export let clientComponents = {
+          ${lines.join(",\n")}
+        }
+      `;
+    }
+  );
+
+  let findClientImports: esbuild.Plugin = {
+    name: "app-server-client-import",
+    setup(build) {
+      build.onLoad(
+        {
+          filter: new RegExp(
+            "^" + escapeStringRegexp(appEntryPoint) + ".+(.ts|.tsx|.js|.jsx)$"
+          ),
+        },
+        async (args) => {
+          let id = path.relative(config.projectPath, args.path);
+          let contents = `
+                export default {
+                  '$$typeof': Symbol.for("react.client.reference"),
+                  '$$id': ${JSON.stringify(id)}
+                }
+              `;
+          clientReferences[id] = { id, path: args.path };
+          bundleMap[id] = {
+            id,
+            chunks: [],
+            name: "default",
+            async: true,
+          };
+          return { contents };
+        }
+      );
+      build.onEnd(async (_result) => {
+        await Api.writeBundleMap(app, bundleMap);
+      });
+    },
+  };
+
   let apiEntryPoint = path.join(config.projectPath, "api");
   let appEntryPoint = path.join(config.projectPath, "app");
 
@@ -82,7 +142,7 @@ export async function create(config: AppConfig): Promise<App> {
           filter: new RegExp(
             "^" +
               escapeStringRegexp(apiEntryPoint) +
-              "(.ts|.js|/index.ts|/index.js)$"
+              "(.ts|.tsx|.js|.jsx|/index.ts|/index.tsx|/index.js|/index.jsx)$"
           ),
         },
         async (_args) => {
@@ -94,82 +154,6 @@ export async function create(config: AppConfig): Promise<App> {
       );
     },
   };
-
-  let bundleMap: Record<
-    string,
-    {
-      id: string;
-      chunks: string[];
-      name: "default" | string;
-      async: boolean;
-    }
-  > = {};
-
-  let clientReferences: { id: string; path: string }[] = [];
-
-  let [crf, crfPlugin] = Build.makeEntryPlugin(
-    "crf",
-    config.projectPath,
-    async () => {
-      await getPages(app);
-      let s = JSON.stringify;
-      let lines: string[] = [];
-      clientReferences.forEach((ref) => {
-        lines.push(`${s(ref.id)}: () => import(${s(ref.path)})`);
-      });
-      return `
-        export let clientComponents = {
-          ${lines.join(",\n")}
-        }
-      `;
-    }
-  );
-
-  let buildAppServer = Build.build({
-    buildId: "app-server",
-    projectPath: config.projectPath,
-    platform: "node",
-    entryPoints: { __main__: "./server" },
-    env: config.env,
-    onBuild: () => info("app-server build ready"),
-    plugins: [
-      {
-        name: "app-server-client-import",
-        setup(build) {
-          build.onLoad(
-            {
-              filter: new RegExp(
-                "^" +
-                  escapeStringRegexp(appEntryPoint) +
-                  ".+(.ts|.tsx|.js|.jsx|/index.ts|/index.tsx|/index.js|/index.jsx)$"
-              ),
-            },
-            async (args) => {
-              console.log(args);
-              let id = "Clock";
-              let contents = `
-                export default {
-                  '$$typeof': Symbol.for("react.client.reference"),
-                  '$$id': ${JSON.stringify(id)}
-                }
-              `;
-              clientReferences.push({ id, path: args.path });
-              bundleMap[id] = {
-                id,
-                chunks: [],
-                name: "default",
-                async: true,
-              };
-              return { contents };
-            }
-          );
-          build.onEnd(async (_result) => {
-            await Pages.writeBundleMap(app, bundleMap);
-          });
-        },
-      },
-    ],
-  });
 
   let [appEntry, appEntryPlugin] = Build.makeEntryPlugin(
     "appEntry",
@@ -228,7 +212,16 @@ export async function create(config: AppConfig): Promise<App> {
       build.onResolve(
         { filter: new RegExp("^" + escapeStringRegexp(apiEntryPoint) + "$") },
         async (args) => {
-          let suffixes = [".ts", ".js", "/index.ts", "/index.js"];
+          let suffixes = [
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx",
+            "/index.ts",
+            "/index.tsx",
+            "/index.js",
+            "/index.jsx",
+          ];
           for (let suffix of suffixes) {
             let path = args.path + suffix;
             try {
@@ -274,14 +267,13 @@ export async function create(config: AppConfig): Promise<App> {
       let hasApi = !("api:synthetic-entry" in (build.metafile?.inputs ?? {}));
       if (hasApi) info(`api build ready`);
     },
-    plugins: [apiEntryPointPlugin],
+    plugins: [apiEntryPointPlugin, findClientImports],
   });
 
   let app: App = {
     buildApi,
     buildApp,
     buildAppForSsr,
-    buildAppServer,
     config,
     basePath,
     workspace,
@@ -291,21 +283,30 @@ export async function create(config: AppConfig): Promise<App> {
 
 function codegenApiSpecs(api: Api.API) {
   let chunks: string[] = [`import * as ASAP from '@mechanize/asap';`];
-  for (let name in api.endpoints) {
-    let endpoint = api.endpoints[name]!;
-    let { method, route } = endpoint;
+  for (let name in api.values) {
     let s = JSON.stringify;
-    chunks.push(
-      `export let ${endpoint.name} = (params) =>
-         ASAP.UNSAFE__call(
-           {name: ${s(endpoint.name)}, method: ${s(method)}, route: ${s(
-        route
-      )}},
-           params);
-       ${endpoint.name}.method = ${s(method)};
-       ${endpoint.name}.route = ${s(route)};
-      `
-    );
+    let v = api.values[name]!;
+    if (v.type === "EndpointInfo") {
+      let { method, route } = v;
+      chunks.push(
+        `let ${name}__spec = {
+           name: ${s(name)},
+           method: ${s(method)},
+           route: ${s(route)}
+         };
+         export let ${name} = (params) =>
+           ASAP.UNSAFE__call(${name}__spec, params);
+         ${name}.method = ${name}__spec.method;
+         ${name}.route = ${name}__spec.route;
+         ${name}.$$typeof = Symbol.for("react.server.reference");
+         ${name}.$$id = ${name}__spec;
+        `
+      );
+    } else if (v.type === "ComponentInfo") {
+      chunks.push(
+        `export let ${name} = ASAP.UNSAFE__callComponent(${s(name)});`
+      );
+    }
   }
   return chunks.join("\n");
 }
@@ -316,18 +317,10 @@ export let getApi = async (app: App) => {
   return await Api.load(app, build);
 };
 
-export let getPages = async (app: App) => {
-  let build = await app.buildAppServer.ready();
-  if (build == null) return null;
-  return await Pages.load(app, build);
-};
-
 export let getSsr = async (app: App) => {
   let build = await app.buildAppForSsr.ready();
   if (build == null) return new Error("SSR is not available");
   let api = await getApi(app);
   if (api instanceof Error) return api;
-  let pages = await getPages(app);
-  if (pages instanceof Error) return pages;
-  return Ssr.load(app, api?.endpoints ?? {}, pages, build);
+  return Ssr.load(app, api, build);
 };

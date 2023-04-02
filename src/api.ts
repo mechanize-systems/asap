@@ -60,8 +60,8 @@ export type EndpointSpec<R, B extends {}, P extends string = string> = {
 
 export type Endpoint<R, B extends {}, P extends string = string> = {
   (params: EndpointParams<B, P>): Promise<Awaited<R>>;
-  type: "Endpoint";
-  method: HTTPMethod;
+  $$asapType: "endpoint";
+  method: HTTPMethod | null;
   path: P | null;
   doc: string | null;
   params: B;
@@ -73,10 +73,36 @@ export function endpoint<R, B extends {}, P extends string>(
   async function handle(params: EndpointParams<B, P>) {
     return config.handle(params);
   }
-  handle.type = "Endpoint";
+  handle.$$asapType = "endpoint";
   handle.method = config.method ?? "GET";
   handle.path = config.path ?? null;
   handle.params = config.params ?? null;
   handle.doc = config.doc ?? null;
   return handle as Endpoint<R, B, P>;
+}
+
+export type ComponentParams<P extends {}> = {
+  [name in keyof P]: Refine.CheckerReturnType<P[name]>;
+};
+
+export type ComponentSpec<P extends {}> = {
+  params: P;
+  render: (params: ComponentParams<P>) => JSX.Element | Promise<JSX.Element>;
+};
+
+export type Component<P extends {}> = React.FunctionComponent<
+  ComponentParams<P>
+> & {
+  (params: ComponentParams<P>): JSX.Element | Promise<JSX.Element>;
+  $$asapType: "component";
+  params: P;
+};
+
+export function component<P extends {}>(spec: ComponentSpec<P>): Component<P> {
+  function component(props: ComponentParams<P>) {
+    return spec.render(props);
+  }
+  component.$$asapType = "component" as const;
+  component.params = spec.params;
+  return component as any;
 }

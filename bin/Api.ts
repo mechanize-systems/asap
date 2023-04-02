@@ -1,6 +1,9 @@
 import type * as APITypes from "../src/api";
 import type * as App from "./App";
 
+import * as React from "react";
+// @ts-ignore
+import * as ReactServerNode from "react-server-dom-webpack/server.node";
 import * as url from "url";
 import * as fs from "fs";
 import module from "module";
@@ -8,7 +11,9 @@ import * as path from "path";
 import * as vm from "vm";
 import memoize from "memoize-weak";
 import debug from "debug";
+import stream from "stream";
 import * as Refine from "@recoiljs/refine";
+import { deferred } from "@mechanize-systems/base/Promise";
 
 import * as Build from "./Build";
 import * as Logging from "./Logging";
@@ -21,14 +26,24 @@ export type API = {
   onRequest: APITypes.Handle<void> | null;
   onWebSocket: APITypes.OnWebSocket | null;
   onCleanup: APITypes.OnCleanup | null;
-  endpoints: { [name: string]: EndpointInfo };
-  handle: <P>(
+  values: { [name: string]: EndpointInfo | ComponentInfo };
+  handleEndpoint: <P>(
     handler: APITypes.Handle<P>,
     params: P,
     req: APITypes.Request<P>,
     res: APITypes.Response,
     next: APITypes.Next
   ) => Promise<unknown>;
+  handleComponent: <P>(
+    req: APITypes.Request<P>,
+    res: APITypes.Response,
+    next: APITypes.Next
+  ) => Promise<unknown>;
+  renderComponent: (
+    ReactClientNode: any,
+    name: string,
+    props: unknown
+  ) => { element: Promise<JSX.Element>; data: Promise<string> } | null;
 };
 
 export let load = memoize(
@@ -116,7 +131,7 @@ export let load = memoize(
       );
     };
 
-    let handle = async <P>(
+    let handleEndpoint = async <P>(
       handler: APITypes.Handle<P>,
       params: P,
       req: APITypes.Request<P>,
@@ -135,24 +150,106 @@ export let load = memoize(
       }
     };
 
+    let bundleMap = await readBundleMap(app);
+
+    let getComponent = (name: string): ComponentInfo | null => {
+      let C = values[name];
+      if (C == null) return null;
+      if (C.type !== "ComponentInfo") return null;
+      return C;
+    };
+
+    let renderToStream = (
+      C: ComponentInfo,
+      props: unknown
+    ): stream.Readable => {
+      let element = React.createElement(C.render as any, props as any);
+      return ReactServerNode.renderToPipeableStream(element, bundleMap);
+    };
+
+    let handleComponent = async <P>(
+      req: APITypes.Request<P>,
+      res: APITypes.Response,
+      _next: APITypes.Next
+    ) => {
+      try {
+        let url = new URL(`http://example.com${req.url!}`);
+        let name = url.searchParams.get("name");
+        if (name == null) {
+          res.statusCode = 400;
+          res.end(`400 BAD REQUEST: Missing "name" parameter`);
+          return;
+        }
+        let c = getComponent(name);
+        if (c == null) {
+          res.statusCode = 400;
+          res.end(`400 BAD REQUEST: No component "${name}" found`);
+          return;
+        }
+        let p = await c.parseParams(req);
+        let s = renderToStream(c, p);
+        res.statusCode = 200;
+        s.pipe(res);
+        return;
+      } catch (err) {
+        handleError(res, err);
+      }
+    };
+
+    let renderComponent = (
+      ReactClientNode: any,
+      name: string,
+      props: unknown
+    ) => {
+      let c = getComponent(name);
+      if (c == null) return null;
+      let s = renderToStream(c, props);
+
+      // need PassThrough here as createFromNodeStream doesn't accept what's
+      // being returned from renderToPipeableStream...
+      let p = new stream.PassThrough();
+      s.pipe(p);
+
+      let data = deferred<string>();
+      {
+        let chunks: Buffer[] = [];
+        p.on("data", (chunk) => {
+          chunks.push(chunk);
+        });
+        p.on("end", () => {
+          data.resolve(Buffer.concat(chunks).toString());
+        });
+        p.on("error", (err) => {
+          console.log("error", err);
+        });
+      }
+      return {
+        element: ReactClientNode.createFromNodeStream(p),
+        data: data.promise,
+      };
+    };
+
     let routes: APITypes.Routes = context.module.exports.routes ?? [];
 
-    let endpoints: API["endpoints"] = {};
+    let values: API["values"] = {};
     for (let name in context.module.exports) {
-      const endpoint = getEndpointInfo(name, context.module.exports[name]);
-      if (endpoint == null) continue;
-      endpoints[name] = endpoint;
-      routes.push({
-        ...endpoint.route,
-        method: endpoint.method,
-        handle: (req, res) => handleEndpoint(endpoint, req, res),
-      });
+      const value = inspectValue(name, context.module.exports[name]);
+      if (value == null) continue;
+      values[name] = value;
+      if (value.type === "EndpointInfo")
+        routes.push({
+          ...value.route,
+          method: value.method,
+          handle: (req, res) => handleEndpoint0(value, req, res),
+        });
     }
 
     return {
       routes,
-      endpoints,
-      handle,
+      values,
+      handleEndpoint,
+      handleComponent,
+      renderComponent,
       onWebSocket: context.module.exports.onWebSocket ?? null,
       onRequest: context.module.exports.onRequest ?? null,
       onCleanup: context.module.exports.onCleanup ?? null,
@@ -177,7 +274,7 @@ let readBody = (req: APITypes.Request<unknown>): Promise<string> => {
   });
 };
 
-async function handleEndpoint<B extends {}, P extends string>(
+async function handleEndpoint0<B extends {}, P extends string>(
   endpoint: EndpointInfo<B, P>,
   req: APITypes.Request<Routing.RouteParams<P>>,
   res: APITypes.Response
@@ -189,6 +286,7 @@ async function handleEndpoint<B extends {}, P extends string>(
 }
 
 type EndpointInfo<B extends {} = {}, P extends string = string> = {
+  type: "EndpointInfo";
   name: string;
   method: APITypes.HTTPMethod;
   route: Routing.Route<P>;
@@ -196,22 +294,28 @@ type EndpointInfo<B extends {} = {}, P extends string = string> = {
   handle: (params: Routing.RouteParams<P> & B) => Promise<unknown>;
 };
 
-function getEndpointInfo(name: string, value: unknown): EndpointInfo | null {
-  if (
-    typeof value === "function" &&
-    value != null &&
-    "type" in value &&
-    "method" in value &&
-    "path" in value &&
-    "params" in value
-  ) {
-    let { method, path } = value;
+type ComponentInfo<P extends {} = {}> = {
+  type: "ComponentInfo";
+  name: string;
+  parseParams: (req: APITypes.Request<unknown>) => Promise<P>;
+  render: APITypes.Component<P>;
+};
+
+function inspectValue(
+  name: string,
+  value: APITypes.Endpoint<unknown, any> | unknown
+): EndpointInfo | ComponentInfo | null {
+  if (typeof value !== "function") return null;
+  if (!("$$asapType" in value)) return null;
+  if (value.$$asapType === "endpoint") {
+    let endpoint = value as APITypes.Endpoint<any, any>;
+    let { method, path } = endpoint;
     path = path ?? `/${name}`;
     let parseParams: EndpointInfo<{}, string>["parseParams"] = (_req) =>
       Promise.resolve({});
-    if (value.params != null) {
+    if (endpoint.params != null) {
       let checker = Refine.object(
-        value.params as Readonly<{}>
+        endpoint.params as Readonly<{}>
       ) as Refine.Checker<{}>;
       if (method === "GET") {
         let assertion = Refine.assertion(checker);
@@ -228,13 +332,55 @@ function getEndpointInfo(name: string, value: unknown): EndpointInfo | null {
         };
       }
     }
+    let route = Routing.route(path as string);
+
+    // as RSC can pass them from inside the module...
+    (endpoint as any).$$typeof = Symbol.for("react.server.reference");
+    (endpoint as any).$$id = {
+      name,
+      method,
+      route: { path: route.path, params: route.params },
+    };
+
     return {
+      type: "EndpointInfo",
       name,
       method: method as APITypes.HTTPMethod,
       parseParams,
-      route: Routing.route(path as string),
+      route,
       handle: value as any as EndpointInfo["handle"],
+    };
+  } else if (value.$$asapType === "component") {
+    let component = value as APITypes.Component<any>;
+    let checker = Refine.object(
+      component.params as Readonly<{}>
+    ) as Refine.Checker<{}>;
+    let parseBody = Refine.jsonParserEnforced(checker);
+    let parseParams = async (req: APITypes.Request<unknown>) => {
+      let body = await readBody(req);
+      return parseBody(body);
+    };
+    return {
+      type: "ComponentInfo",
+      name,
+      parseParams,
+      render: value as APITypes.Component<any>,
     };
   }
   return null;
+}
+
+export async function readBundleMap(app: App.App) {
+  let data = await fs.promises.readFile(
+    path.join(app.buildApi.buildPath, "bundleMap.json"),
+    "utf8"
+  );
+  return JSON.parse(data);
+}
+
+export async function writeBundleMap(app: App.App, data: any) {
+  await fs.promises.writeFile(
+    path.join(app.buildApi.buildPath, "bundleMap.json"),
+    JSON.stringify(data, null, 2)
+  );
 }

@@ -21,13 +21,16 @@ let currentEnvironment: Environment =
 export type ASAPApi = {
   setTitle(title: string): void;
   endpoints: {
-    [name: string]: { handle: Function };
+    [name: string]:
+      | { type: "EndpointInfo"; handle: Function }
+      | { type: "ComponentInfo" };
   };
   endpointsCache: {
     [path: string]: { used: number; result: unknown };
   };
   renderPage: (
-    name: string
+    name: string,
+    props: unknown
   ) => { element: Promise<JSX.Element>; data: Promise<string> } | null;
   pagesCache: {
     [name: string]: { used: number; result: unknown };
@@ -127,8 +130,12 @@ export function render(config: AppConfig, boot: BootConfig) {
 
 let pagesLoading = new Map();
 
-export function serverPage(name: string) {
-  return function Page(): JSX.Element {
+async function callServer(id: any, args: any) {
+  return UNSAFE__call(id, args != null ? args[0] : {});
+}
+
+export function UNSAFE__callComponent(name: string) {
+  return function Page(props: unknown): JSX.Element {
     if (!pagesLoading.has(name)) {
       let loading;
       if (currentEnvironment === "client") {
@@ -147,9 +154,18 @@ export function serverPage(name: string) {
               controller.close();
             },
           });
-          loading = createFromReadableStream(stream);
+          loading = createFromReadableStream(stream, { callServer });
         } else {
-          loading = createFromFetch(fetch(`/_pages?name=${name}`));
+          loading = createFromFetch(
+            fetch(`/_pages?name=${name}`, {
+              // TODO: need GET here for caching
+              method: "POST",
+              body: JSON.stringify(props),
+            }),
+            {
+              callServer,
+            }
+          );
         }
       } else if (currentEnvironment === "ssr") {
         if (name in ASAPApi.pagesCache) {
@@ -158,7 +174,7 @@ export function serverPage(name: string) {
           loading = Promise.resolve(record.result as JSX.Element);
         } else {
           loading = Promise.resolve().then(async () => {
-            let res = ASAPApi.renderPage(name);
+            let res = ASAPApi.renderPage(name, props);
             if (res == null) throw new Error(`no component ${name} found`);
             ASAPApi.pagesCache[name] = { used: 1, result: await res.data };
             return res.element;
@@ -429,6 +445,7 @@ export async function UNSAFE__call<R, B extends {}, P extends string>(
     }
   } else if (currentEnvironment === "ssr") {
     let e = ASAPApi.endpoints[endpoint.name]!;
+    if (e.type !== "EndpointInfo") throw new Error("not an endpoint");
     if (endpoint.method === "GET") {
       let path = endpointHref(endpoint, params);
       if (path in ASAPApi.endpointsCache) {

@@ -1,10 +1,11 @@
 import "./index.css";
 import * as React from "react";
 import * as ASAP from "@mechanize/asap";
+import { App } from "../api";
 
 export let routes = {
   about: ASAP.route("/about", async () => {
-    return { default: ASAP.serverPage("App") };
+    return { default: App };
   }),
   index: ASAP.route("/", async () => {
     return import("./IndexPage");

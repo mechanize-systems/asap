@@ -2,7 +2,6 @@ import type * as ASAP from "../src/index";
 import type * as ReactDOMServer from "react-dom/server";
 import type * as App from "./App";
 import type * as Api from "./Api";
-import type * as Pages from "./Pages";
 
 import * as fs from "fs";
 import * as vm from "vm";
@@ -36,8 +35,7 @@ type SSR = {
 export let load = memoize(
   async (
     app: App.App,
-    endpoints: Api.API["endpoints"],
-    pages: Pages.Pages | null,
+    api: Api.API | null,
     output: Build.BuildOutput<{ __main__: string }>
   ): Promise<SSR | Error> => {
     log("loading app-ssr bundle");
@@ -74,12 +72,12 @@ export let load = memoize(
 
       let ASAPApi: ASAP.ASAPApi = {
         setTitle,
-        endpoints,
+        endpoints: api?.values ?? {},
         endpointsCache: {},
         pagesCache: {},
-        renderPage: (name: string) => {
+        renderPage: (name: string, props) => {
           let ReactClientNode = context.module.exports.ReactClientNode;
-          if (pages != null) return pages.render(ReactClientNode, name);
+          if (api != null) return api.renderComponent(ReactClientNode, name, props);
           else return Promise.reject("no pages bundle active") as any;
         },
       };
