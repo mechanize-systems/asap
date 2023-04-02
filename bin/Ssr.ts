@@ -22,6 +22,8 @@ type SSR = {
   ) => Promise<
     | {
         ReactDOMServer: typeof ReactDOMServer;
+        ReactClientNode: any;
+        clientComponents: Record<string, () => Promise<unknown>>;
         page: React.ReactNode | null;
         endpointsCache: { [path: string]: unknown };
         pagesCache: { [path: string]: unknown };
@@ -60,6 +62,8 @@ export let load = memoize(
       let thisModule: {
         exports: {
           ReactDOMServer: typeof ReactDOMServer;
+          ReactClientNode: any;
+          clientComponents: any;
           ASAP: typeof ASAP;
           config: ASAP.AppConfig;
         };
@@ -74,7 +78,8 @@ export let load = memoize(
         endpointsCache: {},
         pagesCache: {},
         renderPage: (name: string) => {
-          if (pages != null) return pages.render(name);
+          let ReactClientNode = context.module.exports.ReactClientNode;
+          if (pages != null) return pages.render(ReactClientNode, name);
           else return Promise.reject("no pages bundle active") as any;
         },
       };
@@ -84,6 +89,12 @@ export let load = memoize(
         ASAPApi,
         module: thisModule,
         require: thisRequire,
+        __webpack_require__: async (id: string) => {
+          let load = context.module.exports.clientComponents[id];
+          if (load == null)
+            throw new Error(`missing client component in SSR bundle ${id}`);
+          return load();
+        },
         fetch,
         TextDecoder,
         TextEncoder,
@@ -140,6 +151,8 @@ export let load = memoize(
         endpointsCache,
         pagesCache,
         ReactDOMServer: context.module.exports.ReactDOMServer,
+        ReactClientNode: context.module.exports.ReactClientNode,
+        clientComponents: context.module.exports.clientComponents,
       };
     };
 

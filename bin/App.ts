@@ -72,6 +72,7 @@ export async function create(config: AppConfig): Promise<App> {
   }
 
   let apiEntryPoint = path.join(config.projectPath, "api");
+  let appEntryPoint = path.join(config.projectPath, "app");
 
   let appApiEntryPointPlugin: esbuild.Plugin = {
     name: "app-api-entry-point",
@@ -94,6 +95,36 @@ export async function create(config: AppConfig): Promise<App> {
     },
   };
 
+  let bundleMap: Record<
+    string,
+    {
+      id: string;
+      chunks: string[];
+      name: "default" | string;
+      async: boolean;
+    }
+  > = {};
+
+  let clientReferences: { id: string; path: string }[] = [];
+
+  let [crf, crfPlugin] = Build.makeEntryPlugin(
+    "crf",
+    config.projectPath,
+    async () => {
+      await getPages(app);
+      let s = JSON.stringify;
+      let lines: string[] = [];
+      clientReferences.forEach((ref) => {
+        lines.push(`${s(ref.id)}: () => import(${s(ref.path)})`);
+      });
+      return `
+        export let clientComponents = {
+          ${lines.join(",\n")}
+        }
+      `;
+    }
+  );
+
   let buildAppServer = Build.build({
     buildId: "app-server",
     projectPath: config.projectPath,
@@ -101,7 +132,43 @@ export async function create(config: AppConfig): Promise<App> {
     entryPoints: { __main__: "./server" },
     env: config.env,
     onBuild: () => info("app-server build ready"),
-    plugins: [appApiEntryPointPlugin],
+    plugins: [
+      {
+        name: "app-server-client-import",
+        setup(build) {
+          build.onLoad(
+            {
+              filter: new RegExp(
+                "^" +
+                  escapeStringRegexp(appEntryPoint) +
+                  ".+(.ts|.tsx|.js|.jsx|/index.ts|/index.tsx|/index.js|/index.jsx)$"
+              ),
+            },
+            async (args) => {
+              console.log(args);
+              let id = "Clock";
+              let contents = `
+                export default {
+                  '$$typeof': Symbol.for("react.client.reference"),
+                  '$$id': ${JSON.stringify(id)}
+                }
+              `;
+              clientReferences.push({ id, path: args.path });
+              bundleMap[id] = {
+                id,
+                chunks: [],
+                name: "default",
+                async: true,
+              };
+              return { contents };
+            }
+          );
+          build.onEnd(async (_result) => {
+            await Pages.writeBundleMap(app, bundleMap);
+          });
+        },
+      },
+    ],
   });
 
   let [appEntry, appEntryPlugin] = Build.makeEntryPlugin(
@@ -110,7 +177,8 @@ export async function create(config: AppConfig): Promise<App> {
     `
     import * as ASAP from '@mechanize/asap';
     import {config} from './app';
-    ASAP.boot(config);
+    import {clientComponents} from '${crf}';
+    ASAP.boot(config, clientComponents);
     `
   );
 
@@ -120,7 +188,7 @@ export async function create(config: AppConfig): Promise<App> {
     entryPoints: { __main__: appEntry },
     env: config.env,
     onBuild: () => info("app build ready"),
-    plugins: [appApiEntryPointPlugin, appEntryPlugin],
+    plugins: [appApiEntryPointPlugin, appEntryPlugin, crfPlugin],
   });
 
   let [ssrEntry, ssrEntryPlugin] = Build.makeEntryPlugin(
@@ -130,7 +198,9 @@ export async function create(config: AppConfig): Promise<App> {
     import {config} from './app';
     import * as ASAP from '@mechanize/asap';
     import * as ReactDOMServer from 'react-dom/server';
-    export {ReactDOMServer, ASAP, config};
+    import * as ReactClientNode from "react-server-dom-webpack/client.node";
+    import {clientComponents} from '${crf}';
+    export {ReactDOMServer, ReactClientNode, clientComponents, ASAP, config};
     `
   );
 
@@ -141,7 +211,7 @@ export async function create(config: AppConfig): Promise<App> {
     entryPoints: { __main__: ssrEntry },
     env: config.env,
     onBuild: () => info("app-ssr build ready"),
-    plugins: [appApiEntryPointPlugin, ssrEntryPlugin],
+    plugins: [appApiEntryPointPlugin, ssrEntryPlugin, crfPlugin],
   });
 
   // This plugin tries to resolve an api entry point and if found nothing it

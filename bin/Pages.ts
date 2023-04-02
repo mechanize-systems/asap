@@ -2,11 +2,7 @@ import type * as App from "./App";
 
 import * as React from "react";
 // @ts-ignore
-import * as ReactServerDom from "react-server-dom-webpack/server.node";
-// @ts-ignore
-import * as ReactClientDom from "react-server-dom-webpack/client.node";
-// @ts-ignore
-import * as ReactClientBrowser from "react-server-dom-webpack/client.browser";
+import * as ReactServerNode from "react-server-dom-webpack/server.node";
 import type * as http from "http";
 import * as fs from "fs";
 import module from "module";
@@ -37,6 +33,7 @@ export type Pages = {
   onCleanup: OnCleanup | null;
   handle: <P>(req: Request<P>, res: Response, next: Next) => Promise<unknown>;
   render: (
+    ReactClientNode: any,
     name: string
   ) => { element: Promise<JSX.Element>; data: Promise<string> } | null;
 };
@@ -87,6 +84,7 @@ export let load = memoize(
       clearImmediate,
       URLSearchParams,
     };
+
     vm.createContext(context);
     let filename = "asap://pages";
     try {
@@ -104,6 +102,9 @@ export let load = memoize(
       );
       return new Error("error loading API bundle");
     }
+
+    let bundleMap = await readBundleMap(app);
+    console.log(bundleMap);
 
     let handleError = async (res: Response, err: any) => {
       res.statusCode = 500;
@@ -123,7 +124,7 @@ export let load = memoize(
       let C = apiModule.exports[name];
       if (C == null) return null;
       let element = React.createElement(C, {});
-      return ReactServerDom.renderToPipeableStream(element, {});
+      return ReactServerNode.renderToPipeableStream(element, bundleMap);
     };
 
     let handle = async <P>(req: Request<P>, res: Response, _next: Next) => {
@@ -149,7 +150,7 @@ export let load = memoize(
       }
     };
 
-    let render = (name: string) => {
+    let render = (ReactClientNode: any, name: string) => {
       let s = renderToStream(name);
       if (s == null) {
         return null;
@@ -169,9 +170,12 @@ export let load = memoize(
         p.on("end", () => {
           data.resolve(Buffer.concat(chunks).toString());
         });
+        p.on("error", (err) => {
+          console.log("error", err);
+        });
       }
       return {
-        element: ReactClientDom.createFromNodeStream(p, {}),
+        element: ReactClientNode.createFromNodeStream(p),
         data: data.promise,
       };
     };
@@ -183,3 +187,18 @@ export let load = memoize(
     };
   }
 );
+
+export async function readBundleMap(app: App.App) {
+  let data = await fs.promises.readFile(
+    path.join(app.buildAppServer.buildPath, "bundleMap.json"),
+    "utf8"
+  );
+  return JSON.parse(data);
+}
+
+export async function writeBundleMap(app: App.App, data: any) {
+  await fs.promises.writeFile(
+    path.join(app.buildAppServer.buildPath, "bundleMap.json"),
+    JSON.stringify(data, null, 2)
+  );
+}

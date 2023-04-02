@@ -10,6 +10,9 @@ export default function IndexPage(_props: IndexPageProps) {
       <ASAP.Link route={routes.hello} params={{ name: "message" }}>
         Say hello!
       </ASAP.Link>
+      <ASAP.Link route={routes.about} params={{}}>
+        Test RSC
+      </ASAP.Link>
     </div>
   );
 }

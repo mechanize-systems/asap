@@ -346,7 +346,7 @@ let PARSE_OUTFILE_RE = /^([a-z0-9A-Z_]+)-[A-Z0-9]+\.(js|css)$/;
 export function makeEntryPlugin(
   name: string,
   path: string,
-  contents: string
+  contents: string | (() => Promise<string>)
 ): readonly [string, esbuild.Plugin] {
   let entry = `__${name}__`;
   let filter = new RegExp(`^${escapeStringRegexp(entry)}\$`);
@@ -358,8 +358,10 @@ export function makeEntryPlugin(
         build.onResolve({ filter }, async (args) => {
           return { namespace: name, path: args.path };
         });
-        build.onLoad({ filter, namespace: name }, (_args) => {
-          return { resolveDir: path, contents };
+        build.onLoad({ filter, namespace: name }, async (_args) => {
+          if (typeof contents === "function")
+            return { resolveDir: path, contents: await contents() };
+          else return { resolveDir: path, contents };
         });
       },
     },

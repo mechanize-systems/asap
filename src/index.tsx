@@ -102,9 +102,19 @@ export type AppLoadingProps = {};
 export type AppOnPageNotFoundProps = {};
 
 /** Boot application with routes. */
-export function boot(config: AppConfig) {
-  if (currentEnvironment === "client")
+export function boot(
+  config: AppConfig,
+  clientComponents: Record<string, () => Promise<unknown>>
+) {
+  if (currentEnvironment === "client") {
     ReactDOM.hydrateRoot(document, render(config, ASAPBootConfig));
+    (window as any).__webpack_require__ = async (id: string) => {
+      let load = clientComponents[id];
+      if (load == null)
+        throw new Error(`missing client component in client bundle ${id}`);
+      return load();
+    };
+  }
 }
 
 export function render(config: AppConfig, boot: BootConfig) {
