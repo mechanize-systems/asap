@@ -8,6 +8,7 @@ import escapeStringRegexp from "escape-string-regexp";
 
 import * as Ssr from "./Ssr";
 import * as Api from "./Api";
+import * as Pages from "./Pages";
 import * as Workspace from "./Workspace";
 import * as Build from "./Build";
 
@@ -48,6 +49,7 @@ export type App = {
   basePath: string;
   buildApi: Build.BuildService<{ __main__: string }>;
   buildApp: Build.BuildService<{ __main__: string }>;
+  buildAppServer: Build.BuildService<{ __main__: string }>;
   buildAppForSsr: Build.BuildService<{ __main__: string }>;
 };
 
@@ -91,6 +93,16 @@ export async function create(config: AppConfig): Promise<App> {
       );
     },
   };
+
+  let buildAppServer = Build.build({
+    buildId: "app-server",
+    projectPath: config.projectPath,
+    platform: "node",
+    entryPoints: { __main__: "./server" },
+    env: config.env,
+    onBuild: () => info("app-server build ready"),
+    plugins: [appApiEntryPointPlugin],
+  });
 
   let [appEntry, appEntryPlugin] = Build.makeEntryPlugin(
     "appEntry",
@@ -199,6 +211,7 @@ export async function create(config: AppConfig): Promise<App> {
     buildApi,
     buildApp,
     buildAppForSsr,
+    buildAppServer,
     config,
     basePath,
     workspace,
@@ -233,10 +246,18 @@ export let getApi = async (app: App) => {
   return await Api.load(app, build);
 };
 
+export let getPages = async (app: App) => {
+  let build = await app.buildAppServer.ready();
+  if (build == null) return null;
+  return await Pages.load(app, build);
+};
+
 export let getSsr = async (app: App) => {
   let build = await app.buildAppForSsr.ready();
   if (build == null) return new Error("SSR is not available");
   let api = await getApi(app);
   if (api instanceof Error) return api;
-  return Ssr.load(app, api?.endpoints ?? {}, build);
+  let pages = await getPages(app);
+  if (pages instanceof Error) return pages;
+  return Ssr.load(app, api?.endpoints ?? {}, pages, build);
 };

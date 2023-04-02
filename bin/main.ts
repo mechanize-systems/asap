@@ -14,6 +14,7 @@ import * as C from "@mechanize-systems/base/CommandLine";
 
 import type * as API from "../src/api";
 import type * as Api from "./Api";
+import type * as Pages from "./Pages";
 import * as App from "./App";
 import * as Logging from "./Logging";
 import * as Watch from "./Watch";
@@ -58,19 +59,22 @@ async function build(config: App.AppConfig) {
   await Promise.all([
     app.buildApp.start(),
     app.buildAppForSsr.start(),
+    app.buildAppServer.start(),
     app.buildApi.start(),
   ]);
-  let [appOk, apiOk] = await Promise.all([
+  let [appOk, appForSsrOk, appServerOk, apiOk] = await Promise.all([
     app.buildApp.ready(),
     app.buildAppForSsr.ready(),
+    app.buildAppServer.ready(),
     app.buildApi.ready(),
   ]);
   await Promise.all([
     app.buildApp.stop(),
     app.buildAppForSsr.stop(),
+    app.buildAppServer.stop(),
     app.buildApi.stop(),
   ]);
-  return appOk && apiOk;
+  return appOk && appForSsrOk && appServerOk && apiOk;
 }
 
 async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
@@ -98,6 +102,7 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
     await Promise.all([
       app.buildApp.start(),
       app.buildAppForSsr.start(),
+      app.buildAppServer.start(),
       app.buildApi.start(),
     ]);
 
@@ -105,7 +110,7 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
       App.info("changes detected, rebuilding");
       app.buildApp.rebuild();
       app.buildAppForSsr.rebuild();
-      app.buildApi.rebuild();
+      app.buildAppServer.rebuild(), app.buildApi.rebuild();
     }, 300);
 
     App.info(
@@ -123,6 +128,20 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
     }
     prevApi = api;
     return api;
+  }
+
+  let prevPages: Pages.Pages | Error | null = null;
+  async function getPages() {
+    let pages = await App.getPages(app);
+    if (
+      prevPages != null &&
+      !(prevPages instanceof Error) &&
+      prevPages !== pages
+    ) {
+      if (prevPages.onCleanup != null) prevPages.onCleanup();
+    }
+    prevPages = pages;
+    return pages;
   }
 
   if (env === "production") {
@@ -149,6 +168,22 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
   apiServer.all("*", async (req, res, next) => {
     let api = await getApi();
     serveApi(api, req, res, next);
+  });
+
+  let pagesServer = new tinyhttp.App();
+  pagesServer.get("/", async (req, res, next) => {
+    let pages = await getPages();
+    if (pages instanceof Error) {
+      res.statusCode = 500;
+      res.end("500 INTERNAL SERVER ERROR");
+      return;
+    }
+    if (pages == null) {
+      res.statusCode = 404;
+      res.end("404 NOT FOUND");
+      return;
+    }
+    pages.handle(req, res, next);
   });
 
   let staticServer = sirv(app.buildApp.buildPath, {
@@ -181,6 +216,7 @@ async function serve(config: App.AppConfig, serveConfig: ServeConfig) {
       return next();
     }
   });
+  server.use(`/_pages`, pagesServer);
   server.use(`/_api`, apiServer);
   server.use(`/__static`, staticServer);
   server.get(`*`, (req, res) => serveApp(app, req, res));
@@ -273,7 +309,7 @@ let serveApp = async (
   if (rendered instanceof Error) {
     return sendError(rendered);
   }
-  let { page, ReactDOMServer, endpointsCache } = rendered;
+  let { page, ReactDOMServer, endpointsCache, pagesCache } = rendered;
   if (page == null) {
     res.statusCode = 404;
     res.setHeader("Content-Type", "text/html");
@@ -304,7 +340,8 @@ let serveApp = async (
                  document.title = title;
                },
                endpoints: null,
-               endpointsCache: ${JSON.stringify(endpointsCache)}
+               endpointsCache: ${JSON.stringify(endpointsCache)},
+               pagesCache: ${JSON.stringify(pagesCache)}
              };
            </script>`
         );

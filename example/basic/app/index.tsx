@@ -3,6 +3,9 @@ import * as React from "react";
 import * as ASAP from "@mechanize/asap";
 
 export let routes = {
+  about: ASAP.route("/about", async () => {
+    return { default: ASAP.serverPage("App") };
+  }),
   index: ASAP.route("/", async () => {
     return import("./IndexPage");
   }),

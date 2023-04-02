@@ -3,6 +3,12 @@
 
 import * as ReactDOM from "react-dom/client";
 import * as React from "react";
+// @ts-ignore
+import {
+  createFromFetch,
+  createFromReadableStream,
+  // @ts-ignore
+} from "react-server-dom-webpack/client";
 import * as Router from "./Router";
 import * as Routing from "./Routing";
 import type * as API from "./api";
@@ -19,6 +25,12 @@ export type ASAPApi = {
   };
   endpointsCache: {
     [path: string]: { used: number; result: unknown };
+  };
+  renderPage: (
+    name: string
+  ) => { element: Promise<JSX.Element>; data: Promise<string> } | null;
+  pagesCache: {
+    [name: string]: { used: number; result: unknown };
   };
 };
 
@@ -101,6 +113,56 @@ export function render(config: AppConfig, boot: BootConfig) {
       <App config={config} boot={boot} />
     </React.StrictMode>
   );
+}
+
+let pagesLoading = new Map();
+
+export function serverPage(name: string) {
+  return function Page(): JSX.Element {
+    if (!pagesLoading.has(name)) {
+      let loading;
+      if (currentEnvironment === "client") {
+        if (name in ASAPApi.pagesCache) {
+          let record = ASAPApi.pagesCache[name]!;
+          if (record.used === 1) {
+            delete ASAPApi.pagesCache[name];
+          } else {
+            record.used -= 1;
+          }
+          let stream = new ReadableStream({
+            start(controller) {
+              let encoder = new TextEncoder();
+              let data = encoder.encode(record.result as string);
+              controller.enqueue(data);
+              controller.close();
+            },
+          });
+          loading = createFromReadableStream(stream);
+        } else {
+          loading = createFromFetch(fetch(`/_pages?name=${name}`));
+        }
+      } else if (currentEnvironment === "ssr") {
+        if (name in ASAPApi.pagesCache) {
+          let record = ASAPApi.pagesCache[name]!;
+          record.used += 1;
+          loading = Promise.resolve(record.result as JSX.Element);
+        } else {
+          loading = Promise.resolve().then(async () => {
+            let res = ASAPApi.renderPage(name);
+            if (res == null) throw new Error(`no component ${name} found`);
+            ASAPApi.pagesCache[name] = { used: 1, result: await res.data };
+            return res.element;
+          });
+        }
+      } else {
+        let v: never = currentEnvironment;
+        throw new Error(`unknown environment: ${v}`);
+      }
+      pagesLoading.set(name, loading);
+    }
+    let elements = pagesLoading.get(name);
+    return React.use(elements);
+  };
 }
 
 export type LinkProps<P extends string> = {
