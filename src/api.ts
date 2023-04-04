@@ -5,6 +5,7 @@
 import type * as ws from "ws";
 import type * as http from "http";
 import type * as Refine from "@recoiljs/refine";
+import * as React from "react";
 import * as Routing from "./Routing";
 
 export type Request<Params = void> = http.IncomingMessage & {
@@ -95,14 +96,41 @@ export type Component<P extends {}> = React.FunctionComponent<
 > & {
   (params: ComponentParams<P>): JSX.Element | Promise<JSX.Element>;
   $$asapType: "component";
+  $$id: string;
   params: P;
+  render: (params: ComponentParams<P>) => JSX.Element | Promise<JSX.Element>;
 };
 
 export function component<P extends {}>(spec: ComponentSpec<P>): Component<P> {
   function component(props: ComponentParams<P>) {
-    return spec.render(props);
+    return component.render(props);
   }
   component.$$asapType = "component" as const;
   component.params = spec.params;
+  component.render = spec.render;
   return component as any;
+}
+
+let RenderOnClient__client = {
+  $$typeof: Symbol.for("react.client.reference"),
+  $$id: "RenderOnClient",
+};
+
+export function RenderOnClient({
+  children,
+}: {
+  children: React.ReactElement<any, Component<any>>;
+}): JSX.Element {
+  let type = children.type;
+  if (
+    (type as any).$$typeof === Symbol.for("react.server.reference") &&
+    typeof type.$$id === "string"
+  ) {
+    return React.createElement(RenderOnClient__client as any, {
+      id: type.$$id,
+      props: children.props,
+    });
+  } else {
+    return children;
+  }
 }

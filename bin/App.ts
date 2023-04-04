@@ -77,7 +77,14 @@ export async function create(config: AppConfig): Promise<App> {
       name: "default" | string;
       async: boolean;
     }
-  > = {};
+  > = {
+    RenderOnClient: {
+      id: "RenderOnClient",
+      chunks: [],
+      name: "default",
+      async: true,
+    },
+  };
 
   let clientReferences: { [id: string]: { id: string; path: string } } = {};
 
@@ -91,7 +98,9 @@ export async function create(config: AppConfig): Promise<App> {
       for (let id in clientReferences)
         lines.push(`${s(id)}: () => import(${s(clientReferences[id]!.path)})`);
       return `
+        import {RenderOnClient} from '@mechanize/asap';
         export let clientComponents = {
+          'RenderOnClient': () => ({default: RenderOnClient}),
           ${lines.join(",\n")}
         }
       `;

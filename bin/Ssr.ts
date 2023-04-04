@@ -17,15 +17,17 @@ export let log = debug("asap:ssr");
 type SSR = {
   render: (
     config: ASAP.BootConfig,
-    options: { setTitle: (title: string) => void }
+    options: {
+      setTitle: (title: string) => void;
+      onPagesCache: ASAP.ASAPApi["onPagesCache"];
+      onEndpointsCache: ASAP.ASAPApi["onEndpointsCache"];
+    }
   ) => Promise<
     | {
         ReactDOMServer: typeof ReactDOMServer;
         ReactClientNode: any;
         clientComponents: Record<string, () => Promise<unknown>>;
         page: React.ReactNode | null;
-        endpointsCache: { [path: string]: unknown };
-        pagesCache: { [path: string]: unknown };
       }
     | Error
   >;
@@ -52,9 +54,13 @@ export let load = memoize(
 
     async function evalBundle({
       setTitle,
+      onPagesCache,
+      onEndpointsCache,
       initialPath,
     }: {
       setTitle: (title: string) => void;
+      onPagesCache: ASAP.ASAPApi["onPagesCache"];
+      onEndpointsCache: ASAP.ASAPApi["onEndpointsCache"];
       initialPath: string;
     }) {
       let thisModule: {
@@ -75,9 +81,12 @@ export let load = memoize(
         endpoints: api?.values ?? {},
         endpointsCache: {},
         pagesCache: {},
+        onPagesCache,
+        onEndpointsCache,
         renderPage: (name: string, props) => {
           let ReactClientNode = context.module.exports.ReactClientNode;
-          if (api != null) return api.renderComponent(ReactClientNode, name, props);
+          if (api != null)
+            return api.renderComponent(ReactClientNode, name, props);
           else return Promise.reject("no pages bundle active") as any;
         },
       };
@@ -129,25 +138,24 @@ export let load = memoize(
         );
         return new Error("error loading SSR bundle");
       }
-      return [context, ASAPApi.endpointsCache, ASAPApi.pagesCache] as const;
+      return context;
     }
 
     let render: SSR["render"] = async (
       boot: ASAP.BootConfig,
-      { setTitle }
+      { setTitle, onPagesCache, onEndpointsCache }
     ) => {
-      let res = await evalBundle({
+      let context = await evalBundle({
         setTitle,
+        onPagesCache,
+        onEndpointsCache,
         initialPath: boot.initialPath ?? "/",
       });
-      if (res instanceof Error) return res;
-      let [context, endpointsCache, pagesCache] = res;
+      if (context instanceof Error) return context;
       let { ASAP, config } = context.module.exports;
       let page = ASAP.render(config, boot);
       return {
         page,
-        endpointsCache,
-        pagesCache,
         ReactDOMServer: context.module.exports.ReactDOMServer,
         ReactClientNode: context.module.exports.ReactClientNode,
         clientComponents: context.module.exports.clientComponents,

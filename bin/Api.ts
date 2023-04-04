@@ -360,11 +360,18 @@ function inspectValue(
       let body = await readBody(req);
       return parseBody(body);
     };
+
+    // as RSC can pass them from inside the module...
+    (component as any).$$typeof = Symbol.for("react.server.reference");
+    (component as any).$$id = name;
+
+    let render = component.render as APITypes.Component<any>;
+
     return {
       type: "ComponentInfo",
       name,
       parseParams,
-      render: value as APITypes.Component<any>,
+      render,
     };
   }
   return null;

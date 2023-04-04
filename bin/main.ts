@@ -272,6 +272,7 @@ let serveApp = async (
   }
   let js = out?.__main__.js?.relativePath ?? "__buildError.js";
   let css = out?.__main__.css?.relativePath;
+  let s = JSON.stringify;
   let rendered = await ssr.render(
     {
       basePath: app.basePath,
@@ -281,8 +282,20 @@ let serveApp = async (
     },
     {
       setTitle(title) {
+        res.write(`<script>document.title = ${s(title)};</script>`);
+      },
+      onPagesCache(key, value) {
         res.write(
-          `<script>document.title = ${JSON.stringify(title)};</script>`
+          `<script>ASAPApi.pagesCache[${s(key)}] = {used: 1, result: ${s(
+            value
+          )}};</script>`
+        );
+      },
+      onEndpointsCache(key, value) {
+        res.write(
+          `<script>ASAPApi.endpointsCache[${s(key)}] = {used: 1, result: ${s(
+            value
+          )}};</script>`
         );
       },
     }
@@ -290,7 +303,7 @@ let serveApp = async (
   if (rendered instanceof Error) {
     return sendError(rendered);
   }
-  let { page, ReactDOMServer, endpointsCache, pagesCache } = rendered;
+  let { page, ReactDOMServer } = rendered;
   if (page == null) {
     res.statusCode = 404;
     res.setHeader("Content-Type", "text/html");
@@ -312,21 +325,7 @@ let serveApp = async (
     onShellError(_error: unknown) {
       sendError(_error);
     },
-    onAllReady() {
-      if (res.statusCode === 200)
-        res.write(
-          `<script>
-             window.ASAPApi = {
-               setTitle(title) {
-                 document.title = title;
-               },
-               endpoints: null,
-               endpointsCache: ${JSON.stringify(endpointsCache)},
-               pagesCache: ${JSON.stringify(pagesCache)}
-             };
-           </script>`
-        );
-    },
+    onAllReady() {},
     onError(err: unknown) {
       didError = true;
       ssr.formatError(err).then((err) => console.error(err));

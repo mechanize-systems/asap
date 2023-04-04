@@ -20,6 +20,8 @@ let currentEnvironment: Environment =
 
 export type ASAPApi = {
   setTitle(title: string): void;
+  onPagesCache(key: string, value: string): void;
+  onEndpointsCache(key: string, value: string): void;
   endpoints: {
     [name: string]:
       | { type: "EndpointInfo"; handle: Function }
@@ -128,66 +130,77 @@ export function render(config: AppConfig, boot: BootConfig) {
   );
 }
 
+export function RenderOnClient({ id, props }: { id: string; props: unknown }) {
+  let C = getServerComponent(id, props);
+  return React.use(C);
+}
+
+function callServer(id: any, args: any) {
+  let p = args != null ? args[0] : {};
+  if (typeof id === "string") return getServerComponent(id, p);
+  else return UNSAFE__call(id, p);
+}
+
 let pagesLoading = new Map();
 
-async function callServer(id: any, args: any) {
-  return UNSAFE__call(id, args != null ? args[0] : {});
+function getServerComponent(name: string, props: any) {
+  // TODO: use props for key as well
+  if (!pagesLoading.has(name)) {
+    let loading;
+    if (currentEnvironment === "client") {
+      if (name in ASAPApi.pagesCache) {
+        let record = ASAPApi.pagesCache[name]!;
+        if (record.used === 1) {
+          delete ASAPApi.pagesCache[name];
+        } else {
+          record.used -= 1;
+        }
+        let stream = new ReadableStream({
+          start(controller) {
+            let encoder = new TextEncoder();
+            let data = encoder.encode(record.result as string);
+            controller.enqueue(data);
+            controller.close();
+          },
+        });
+        loading = createFromReadableStream(stream, { callServer });
+      } else {
+        loading = createFromFetch(
+          fetch(`/_pages?name=${name}`, {
+            // TODO: need GET here for caching
+            method: "POST",
+            body: JSON.stringify(props),
+          }),
+          {
+            callServer,
+          }
+        );
+      }
+    } else if (currentEnvironment === "ssr") {
+      if (name in ASAPApi.pagesCache) {
+        let record = ASAPApi.pagesCache[name]!;
+        record.used += 1;
+        loading = Promise.resolve(record.result as JSX.Element);
+      } else {
+        loading = Promise.resolve().then(async () => {
+          let res = ASAPApi.renderPage(name, props);
+          if (res == null) throw new Error(`no component ${name} found`);
+          ASAPApi.onPagesCache(name, await res.data);
+          return res.element;
+        });
+      }
+    } else {
+      let v: never = currentEnvironment;
+      throw new Error(`unknown environment: ${v}`);
+    }
+    pagesLoading.set(name, loading);
+  }
+  return pagesLoading.get(name);
 }
 
 export function UNSAFE__callComponent(name: string) {
   return function Page(props: unknown): JSX.Element {
-    if (!pagesLoading.has(name)) {
-      let loading;
-      if (currentEnvironment === "client") {
-        if (name in ASAPApi.pagesCache) {
-          let record = ASAPApi.pagesCache[name]!;
-          if (record.used === 1) {
-            delete ASAPApi.pagesCache[name];
-          } else {
-            record.used -= 1;
-          }
-          let stream = new ReadableStream({
-            start(controller) {
-              let encoder = new TextEncoder();
-              let data = encoder.encode(record.result as string);
-              controller.enqueue(data);
-              controller.close();
-            },
-          });
-          loading = createFromReadableStream(stream, { callServer });
-        } else {
-          loading = createFromFetch(
-            fetch(`/_pages?name=${name}`, {
-              // TODO: need GET here for caching
-              method: "POST",
-              body: JSON.stringify(props),
-            }),
-            {
-              callServer,
-            }
-          );
-        }
-      } else if (currentEnvironment === "ssr") {
-        if (name in ASAPApi.pagesCache) {
-          let record = ASAPApi.pagesCache[name]!;
-          record.used += 1;
-          loading = Promise.resolve(record.result as JSX.Element);
-        } else {
-          loading = Promise.resolve().then(async () => {
-            let res = ASAPApi.renderPage(name, props);
-            if (res == null) throw new Error(`no component ${name} found`);
-            ASAPApi.pagesCache[name] = { used: 1, result: await res.data };
-            return res.element;
-          });
-        }
-      } else {
-        let v: never = currentEnvironment;
-        throw new Error(`unknown environment: ${v}`);
-      }
-      pagesLoading.set(name, loading);
-    }
-    let elements = pagesLoading.get(name);
-    return React.use(elements);
+    return React.use(getServerComponent(name, props));
   };
 }
 
@@ -274,17 +287,33 @@ export function App(props: AppProps) {
     window.ASAPConfig = ${JSON.stringify({ basePath: props.boot.basePath })};
     window.ASAPBootConfig = ${JSON.stringify(props.boot)};
   `;
+  let preamble = `
+    window.ASAPApi = {
+      setTitle(title) {
+        document.title = title;
+      },
+      endpoints: null,
+      endpointsCache: {},
+      pagesCache: {},
+    };
+  `;
   return (
-    <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta charSet="utf-8" />
-        <script dangerouslySetInnerHTML={{ __html: boot }} />
-        {js}
-        {css}
-      </head>
-      <Body {...props} />
-    </html>
+    <>
+      <html>
+        <head>
+          <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1"
+          />
+          <meta charSet="utf-8" />
+          <script dangerouslySetInnerHTML={{ __html: preamble }} />
+          <script dangerouslySetInnerHTML={{ __html: boot }} />
+          {js}
+          {css}
+        </head>
+        <Body {...props} />
+      </html>
+    </>
   );
 }
 
@@ -454,7 +483,7 @@ export async function UNSAFE__call<R, B extends {}, P extends string>(
         return record.result as R;
       } else {
         let result = await e.handle!(params);
-        ASAPApi.endpointsCache[path] = { used: 1, result };
+        ASAPApi.onEndpointsCache(path, result);
         return result;
       }
     } else {
