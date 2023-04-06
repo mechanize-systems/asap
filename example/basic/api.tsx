@@ -19,28 +19,6 @@ export let hello = api.endpoint({
   },
 });
 
-export let Streaming = api.component({
-  params: { n: Refine.number() },
-  render(props: { n: number }) {
-    return (
-      <div>
-        {props.n}
-        <React.Suspense fallback={<div>Loading...</div>}>
-          <Next n={props.n} />
-        </React.Suspense>
-      </div>
-    );
-  },
-});
-
-function Next(props: { n: number }) {
-  let msg = Promise.resolve().then(async () => {
-    await sleep(1000);
-    return <Streaming n={props.n + 1} />;
-  });
-  return <>{msg}</>;
-}
-
 export let App = api.component({
   params: {},
   async render() {
@@ -66,7 +44,7 @@ export let App = api.component({
 export let Addon = api.component({
   params: { children: Refine.string() },
   async render(props) {
-    await sleep(1000);
+    await sleep(3000);
     return <p>HELLO! {props.children}</p>;
   },
 });

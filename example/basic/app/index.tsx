@@ -1,5 +1,4 @@
 import "./index.css";
-import * as React from "react";
 import * as ASAP from "@mechanize/asap";
 import { App } from "../api";
 
@@ -23,12 +22,10 @@ function randomSleep() {
 function AppChrome(props: ASAP.AppChromeProps) {
   return (
     <body>
-      <React.Suspense fallback={<props.AppLoading />}>
-        {props.isNavigating && (
-          <div className="LoadingIndicator">Loading...</div>
-        )}
-        {props.children}
-      </React.Suspense>
+      {props.isNavigating && (
+        <div className="LoadingIndicator">Loading...</div>
+      )}
+      {props.children}
     </body>
   );
 }

@@ -91,9 +91,9 @@ export type ComponentSpec<P extends {}> = {
   render: (params: ComponentParams<P>) => JSX.Element | Promise<JSX.Element>;
 };
 
-export type Component<P extends {}> = React.FunctionComponent<
-  ComponentParams<P>
-> & {
+export type Component<P extends {}> = ((
+  props: ComponentParams<P>
+) => JSX.Element) & {
   (params: ComponentParams<P>): JSX.Element | Promise<JSX.Element>;
   $$asapType: "component";
   $$id: string;

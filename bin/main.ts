@@ -2,6 +2,7 @@ import "source-map-support/register";
 
 import * as socketActivation from "socket-activation";
 
+import type * as ASAP from "../src/index";
 import * as fs from "fs";
 import * as path from "path";
 import * as http from "http";
@@ -272,34 +273,47 @@ let serveApp = async (
   }
   let js = out?.__main__.js?.relativePath ?? "__buildError.js";
   let css = out?.__main__.css?.relativePath;
+  let jsUrl = `${app.basePath}/__static/${js}`;
+  let cssUrl = css != null ? `${app.basePath}/__static/${css}` : null;
   let s = JSON.stringify;
-  let rendered = await ssr.render(
-    {
-      basePath: app.basePath,
-      initialPath: req.path,
-      js: `${app.basePath}/__static/${js}`,
-      css: css != null ? `${app.basePath}/__static/${css}` : null,
-    },
-    {
-      setTitle(title) {
-        res.write(`<script>document.title = ${s(title)};</script>`);
-      },
-      onPagesCache(key, value) {
-        res.write(
-          `<script>ASAPApi.pagesCache[${s(key)}] = {used: 1, result: ${s(
-            value
-          )}};</script>`
-        );
-      },
-      onEndpointsCache(key, value) {
-        res.write(
-          `<script>ASAPApi.endpointsCache[${s(key)}] = {used: 1, result: ${s(
-            value
-          )}};</script>`
-        );
-      },
+  let queue: null | string[] = [];
+  function writeOrQueue(chunk: string) {
+    if (queue == null) res.write(chunk);
+    else queue.push(chunk);
+  }
+  function drainQueue() {
+    if (queue != null) {
+      queue.forEach((chunk) => res.write(chunk));
+      queue = null;
     }
-  );
+  }
+  let bootConfig: ASAP.BootConfig = {
+    basePath: app.basePath,
+    initialPath: req.path,
+  };
+  let rendered = await ssr.render(bootConfig, {
+    setTitle(title) {
+      writeOrQueue(
+        `<script>
+           document.title = ${s(title)};
+         </script>`
+      );
+    },
+    onPagesCache(k, v) {
+      writeOrQueue(
+        `<script>
+           ASAPApi.pagesCache[${s(k)}] = {used: 1, result: ${s(v)}};
+         </script>`
+      );
+    },
+    onEndpointsCache(k, v) {
+      writeOrQueue(
+        `<script>
+           ASAPApi.endpointsCache[${s(k)}] = {used: 1, result: ${s(v)}};
+         </script>`
+      );
+    },
+  });
   if (rendered instanceof Error) {
     return sendError(rendered);
   }
@@ -316,11 +330,28 @@ let serveApp = async (
     return;
   }
   let didError = false;
-  let stream = ReactDOMServer.renderToPipeableStream(page, {
+  let html = ReactDOMServer.renderToPipeableStream(page, {
+    progressiveChunkSize: 8,
+    bootstrapScriptContent: `
+      window.ASAPConfig = ${JSON.stringify({ basePath: app.basePath })};
+      window.ASAPBootConfig = ${JSON.stringify(bootConfig)};
+      window.ASAPApi = {
+        setTitle(title) { document.title = title; },
+        endpoints: null,
+        endpointsCache: {},
+        pagesCache: {},
+      };
+    `,
     onShellReady() {
       res.statusCode = didError ? 500 : 200;
       res.setHeader("Content-type", "text/html");
-      stream.pipe(res);
+      res.write(
+        `<script async defer type="module" src=${s(jsUrl)}></script>\n`
+      );
+      if (cssUrl != null)
+        res.write(`<link rel="stylesheet" href=${s(cssUrl)} />\n`);
+      html.pipe(res);
+      drainQueue();
     },
     onShellError(_error: unknown) {
       sendError(_error);

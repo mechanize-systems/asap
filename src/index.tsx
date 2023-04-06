@@ -85,12 +85,6 @@ export type AppConfig = {
   AppChrome?: React.ComponentType<AppChromeProps>;
 
   /**
-   * A component which renders a loading screen (while application page is being
-   * loaded).
-   */
-  AppLoading?: React.ComponentType<AppLoadingProps>;
-
-  /**
    * A component which renders when no page route matches the current pathname.
    */
   AppOnPageNotFound?: React.ComponentType<AppOnPageNotFoundProps>;
@@ -99,10 +93,7 @@ export type AppConfig = {
 export type AppChromeProps = {
   isNavigating: boolean;
   children: React.ReactNode;
-  AppLoading: React.ComponentType<AppLoadingProps>;
 };
-
-export type AppLoadingProps = {};
 
 export type AppOnPageNotFoundProps = {};
 
@@ -268,8 +259,6 @@ export let Link = React.forwardRef(
 export type BootConfig = {
   basePath: string;
   initialPath?: string;
-  js: string;
-  css: string | null;
 };
 
 export type AppProps = {
@@ -278,42 +267,14 @@ export type AppProps = {
 };
 
 export function App(props: AppProps) {
-  let js = <script async defer type="module" src={props.boot.js} />;
-  let css =
-    props.boot.css != null ? (
-      <link rel="stylesheet" href={props.boot.css} />
-    ) : null;
-  let boot = `
-    window.ASAPConfig = ${JSON.stringify({ basePath: props.boot.basePath })};
-    window.ASAPBootConfig = ${JSON.stringify(props.boot)};
-  `;
-  let preamble = `
-    window.ASAPApi = {
-      setTitle(title) {
-        document.title = title;
-      },
-      endpoints: null,
-      endpointsCache: {},
-      pagesCache: {},
-    };
-  `;
   return (
-    <>
-      <html>
-        <head>
-          <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1"
-          />
-          <meta charSet="utf-8" />
-          <script dangerouslySetInnerHTML={{ __html: preamble }} />
-          <script dangerouslySetInnerHTML={{ __html: boot }} />
-          {js}
-          {css}
-        </head>
-        <Body {...props} />
-      </html>
-    </>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta charSet="utf-8" />
+      </head>
+      <Body {...props} />
+    </html>
   );
 }
 
@@ -333,10 +294,9 @@ function Body({ config, boot }: AppProps) {
     return <AppOnPageNotFound />;
   }
   let AppChrome = config.AppChrome ?? AppChromeDefault;
-  let AppLoading = config.AppLoading ?? AppLoadingDefault;
   return (
     <Router.ContextProvider value={router}>
-      <AppChrome isNavigating={isNavigating} AppLoading={AppLoading}>
+      <AppChrome isNavigating={isNavigating}>
         <route.Page key={route.path} {...params} />
       </AppChrome>
     </Router.ContextProvider>
@@ -356,32 +316,7 @@ function match<T extends string>(
 }
 
 function AppChromeDefault(props: AppChromeProps) {
-  return (
-    <body>
-      <React.Suspense fallback={<props.AppLoading />}>
-        {props.children}
-      </React.Suspense>
-    </body>
-  );
-}
-
-function AppLoadingDefault(_props: AppLoadingProps) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-      }}
-    >
-      Loading...
-    </div>
-  );
+  return <body>{props.children}</body>;
 }
 
 function AppOnPageNotFoundDefault(_props: AppOnPageNotFoundProps) {
